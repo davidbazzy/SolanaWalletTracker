@@ -1,0 +1,21 @@
+<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 http://maven.apache.org/xsd/settings-1.0.0.xsd">
+    <servers>
+        <server>
+            <id>gpr-sava</id>
+            <username></username> <!--> This is a placeholder for your username <-->
+            <password></password> <!--> This is a placeholder for your password <-->
+        </server>
+        <server>
+            <id>gpr-json-iterator</id>
+            <username></username> <!--> This is a placeholder for your username <-->
+            <password></password> <!--> This is a placeholder for your password <-->
+        </server>
+        <server>
+            <id>solana-programs</id>
+            <username></username> <!--> This is a placeholder for your username <-->
+            <password></password> <!--> This is a placeholder for your password <-->
+        </server>
+    </servers>
+</settings>

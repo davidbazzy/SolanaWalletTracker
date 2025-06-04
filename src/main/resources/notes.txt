@@ -1,0 +1,17 @@
+Learning notes from project
+
+- wallet address must be provided in base58 format & not base64 (ref: https://solana.com/docs/core/accounts - 58 chars)
+- A record is a new class type (eg enum is a class type), that is used for the purpose of storing data
+- CompletableFuture is a class that represents a future result of an asynchronous computation (runs on a separate thread)
+    -> the get() method is a blocking method and will block the main thread. thenAccept etc are all non-blocking
+- Logging colour formatting has to be set up using: 1) loggging.properties file 2) ColourFormatter class & 3) add logging.properties file to jvm args
+- Strings are represented as byte arrays in Java internally, which holds the actual characters
+    - Eg: "hi" is a byte array of 2 bytes stored as [104,105] where 104 and 105 are the ASCII representations of 'h' and 'i' respectively
+- In maven, to retrieve dependencies once they've been added to the POM, use 'sync all maven projects' in the maven tab (or clean install, try that)
+
+Solana notes
+- all data in solana is contained within accounts
+- My Sol wallet, the CA of a token (token mint), the storing of a token (CA) in my wallet -> These are all accounts
+- Two types of accounts:
+    -> Programs (smart contracts - stateless accounts that store executable code)
+    -> Data accounts (created by programs to store/manage program state)
