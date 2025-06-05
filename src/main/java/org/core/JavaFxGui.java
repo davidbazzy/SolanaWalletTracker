@@ -11,7 +11,7 @@ import javafx.stage.Stage;
 import org.core.processors.Processor;
 
 // TODO: Temporarily do not use until I fix display issues. Currently using Mainframe.java
-public class MainAppGpt extends Application {
+public class JavaFxGui extends Application {
 
     Processor processor = new Processor();
 
