@@ -3,8 +3,12 @@ package org.core.utils;
 import org.core.accounts.Token;
 import org.core.accounts.Wallet;
 
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.sql.*;
 import java.util.Map;
+import java.util.Properties;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -12,15 +16,26 @@ public class DatabaseConnUtil {
 
     private static final Logger logger = Logger.getLogger(DatabaseConnUtil.class.getName());
 
+    public static String getDbPassword() throws IOException {
+        Properties props = new Properties();
+        try (InputStream input = DatabaseConnUtil.class.getClassLoader().getResourceAsStream("secrets.properties")) {
+            props.load(input);
+        }
+        return props.getProperty("db.password");
+    }
+
     public static Connection initiateDbConnection() {
         String jdbcUrl = "jdbc:postgresql://localhost:5432/postgres";
         String username = "postgres";
-        String password = ""; // TODO: Move and set db password in config that won't be uploaded to Github. Inject config value into class
+        String password = "";
 
         try {
+            password = getDbPassword();
             return DriverManager.getConnection(jdbcUrl, username, password);
         } catch (SQLException e) {
             logger.log(Level.SEVERE, "Failed to connect to the database", e);
+        } catch (IOException e) {
+            logger.log(Level.SEVERE, "Failed to load database password from properties file", e);
         }
 
         return null;

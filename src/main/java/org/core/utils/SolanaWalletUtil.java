@@ -65,6 +65,12 @@ public class SolanaWalletUtil {
                                      Connection dbConn) {
         Wallet wallet;
         String[] walletInputSplit = walletInput.split(" ");
+
+        if (walletInputSplit.length != 2) {
+            outputArea.append("❌ Invalid wallet input format. Please use: <wallet_address> <wallet_name>\n");
+            return;
+        }
+
         String walletAddress = walletInputSplit[0];
         String walletName = walletInputSplit[1];
 

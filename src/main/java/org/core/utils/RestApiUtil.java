@@ -4,15 +4,18 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.apache.commons.lang3.StringUtils;
 import org.core.processors.MarketDataProcessor;
 import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.util.Properties;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -24,10 +27,30 @@ public class RestApiUtil {
     private static final String s_heliusTokenApi = "https://mainnet.helius-rpc.com/?api-key=";
     private static final String s_getRequest = "GET";
     private static final String s_postRequest = "POST";
+    private static final String s_heliusTokenApiKey;
+
+    static {
+        String tempHeliusTokenApiKey;
+        try {
+            tempHeliusTokenApiKey = getHeliusApiKey();
+        } catch (IOException e) {
+            logger.log(Level.SEVERE, "Failed to load Helius API key from properties file", e);
+            tempHeliusTokenApiKey = StringUtils.EMPTY;
+        }
+        s_heliusTokenApiKey = tempHeliusTokenApiKey;
+    }
+
+    public static String getHeliusApiKey() throws IOException {
+        Properties props = new Properties();
+        try (InputStream input = RestApiUtil.class.getClassLoader().getResourceAsStream("secrets.properties")) {
+            props.load(input);
+        }
+
+
+        return props.getProperty("db.password");
+    }
 
     public static JSONObject getTokenMetadataFromHelius(String mintAddress) throws JsonProcessingException {
-        final String heliusApiKey = ""; // TODO: Move and set api key in config that won't be uploaded to Github. Inject config value into class
-
         ObjectNode params = JsonNodeFactory.instance.objectNode();
         params.put("id", mintAddress);
         params.with("displayOptions").put("showFungible", true); //TODO: update as 'with' is deprecated in Jackson 2.17.0
@@ -42,7 +65,7 @@ public class RestApiUtil {
 
 
         HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(s_heliusTokenApi + heliusApiKey))
+                .uri(URI.create(s_heliusTokenApi + s_heliusTokenApiKey))
                 .header("Content-Type", "application/json")
                 .header("Accept", "*/*")
                 .POST(HttpRequest.BodyPublishers.ofString(requestBody))

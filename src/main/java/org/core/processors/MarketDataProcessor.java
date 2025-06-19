@@ -58,7 +58,7 @@ public class MarketDataProcessor {
 
                     if(data.isNull(tokenMintAddress)){
                         if (!tokensWithNoMktData.contains(tokenMintAddress)) {
-                            // TODO: Tokens without a price from Jupiter are most likely spam coins. Analyze this at some point
+                            // TODO: Tokens without a price from Jupiter are most likely spam coins. Create a blacklist table for these tokens in db
                             logger.log(Level.WARNING, "Token price data is null for tokenMintAddress: " + tokenMintAddress);
                             tokensWithNoMktData.add(tokenMintAddress);
                         }

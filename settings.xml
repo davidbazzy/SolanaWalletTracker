@@ -4,18 +4,18 @@
     <servers>
         <server>
             <id>gpr-sava</id>
-            <username></username> <!--> This is a placeholder for your username <-->
-            <password></password> <!--> This is a placeholder for your password <-->
+            <username>${env.SAVA_MAVEN_USERNAME}</username>
+            <password>${env.SAVA_MAVEN_PASSWORD}</password>
         </server>
         <server>
             <id>gpr-json-iterator</id>
-            <username></username> <!--> This is a placeholder for your username <-->
-            <password></password> <!--> This is a placeholder for your password <-->
+            <username>${env.SAVA_MAVEN_USERNAME}</username>
+            <password>${env.SAVA_MAVEN_PASSWORD}</password>
         </server>
         <server>
             <id>solana-programs</id>
-            <username></username> <!--> This is a placeholder for your username <-->
-            <password></password> <!--> This is a placeholder for your password <-->
+            <username>${env.SAVA_MAVEN_USERNAME}</username>
+            <password>${env.SAVA_MAVEN_PASSWORD}</password>
         </server>
     </servers>
 </settings>
