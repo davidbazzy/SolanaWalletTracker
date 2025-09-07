@@ -12,7 +12,7 @@ public class ValidationUtil {
 
     // TODO: Need to rewrite to cater for wallet 'name' label
     public static boolean validateAddressFormat(String address) {
-        String[] arr = address.split(" "); // Split by space due to 'address name' format
+        String[] arr = address.split(":"); // Split by space due to 'address name' format
         if (address.length() != 43 && address.length() != 44  && arr.length != 2) {
             logger.log(Level.WARNING, "Address length is not 44/45 characters OR address/name hasn't been entered");
             return false;

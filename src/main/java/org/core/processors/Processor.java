@@ -7,7 +7,7 @@ import org.core.accounts.Wallet;
 import org.core.utils.DatabaseConnUtil;
 import org.core.utils.UserInterfaceDisplayUtil;
 import org.core.utils.ValidationUtil;
-import org.core.utils.SolanaWalletUtil;
+import org.core.utils.WalletService;
 import software.sava.rpc.json.http.SolanaNetwork;
 import software.sava.rpc.json.http.client.SolanaRpcClient;
 
@@ -26,11 +26,13 @@ public class Processor {
 
     private final SolanaRpcClient m_solanaRpc;
 
+    private final WalletService m_walletService;
+
     private final Map<String, Token> m_tokenMap = new ConcurrentHashMap<>();
 
     private final Map<String, Token> m_activetokenMap = new ConcurrentHashMap<>();
 
-    private final Map<String, Wallet> m_wallets = new HashMap<>();
+    private final Map<String, Wallet> m_wallets = new ConcurrentHashMap<>();
 
     private static final String m_systemExit = "0";
 
@@ -52,40 +54,7 @@ public class Processor {
         initiateMarketDataThread();
         initiatePositionUpdateThread();
         DatabaseConnUtil.loadTokensFromDb(m_dbConnection, m_tokenMap);
-    }
-
-    public void handleExit() {
-        logger.log(Level.INFO, "Shutting down gracefully");
-        System.exit(0);
-    }
-
-    public void handleHoldings(TextArea outputArea) {
-        logger.log(Level.INFO, "Displaying holdings");
-        UserInterfaceDisplayUtil.displayWalletHoldings(outputArea, m_wallets);
-    }
-
-    public void handleSharedTokens(TextArea outputArea) {
-        UserInterfaceDisplayUtil.displayCommonTokensAcrossWallets(outputArea, m_wallets);
-        //JSONObject json = JupiterApiUtil.getTokenDetailsFromSolanaFm();
-        // Implement the logic to handle shared tokens and display in outputArea
-    }
-
-    public void handleWalletAddressInput(TextArea outputArea, String input) {
-        if (ValidationUtil.validateAddressFormat(input)) {
-            logger.log(Level.INFO, "Valid Wallet address format: " + input);
-
-            Wallet wallet = SolanaWalletUtil.processWallet(m_solanaRpc, m_wallets, input, m_tokenMap, m_activetokenMap, m_dbConnection);
-            outputArea.appendText(String.format("✅ Wallet contents retrieved for: %s \n", input));
-
-            if (wallet != null) {
-                outputArea.appendText(String.format("🔃 Active positions: %s ", wallet.getPositions().size()));
-            } else {
-                outputArea.appendText("❌ Failed to retrieve wallet contents\n");
-            }
-
-        } else {
-            outputArea.appendText("❌ Invalid wallet address \n");
-        }
+        m_walletService = new WalletService(m_solanaRpc, m_wallets, m_tokenMap, m_activetokenMap, m_dbConnection);
     }
 
     public void handleWalletAddressInput(JTextArea outputArea, String input) {
@@ -114,8 +83,7 @@ public class Processor {
             }
         } else if (ValidationUtil.validateAddressFormat(input)) {
             logger.log(Level.INFO, "Valid Wallet address format: " + input);
-
-            SolanaWalletUtil.processWalletForCmd(outputArea, m_solanaRpc, m_wallets, input, m_tokenMap,  m_activetokenMap, m_dbConnection);
+            m_walletService.processWalletForCmd(input, outputArea);
         } else {
             outputArea.append("Invalid input\n");
         }

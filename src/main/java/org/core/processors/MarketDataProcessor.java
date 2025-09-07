@@ -11,6 +11,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -18,7 +19,7 @@ public class MarketDataProcessor {
 
     private static final Logger logger = Logger.getLogger(MarketDataProcessor.class.getName());
 
-    private final Map<String, MarketData> m_marketDataMap = new HashMap<>();
+    private final Map<String, MarketData> m_marketDataMap = new ConcurrentHashMap<>();
 
     private final HttpClient m_httpClient;
 

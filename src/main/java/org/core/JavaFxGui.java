@@ -8,12 +8,12 @@ import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import javafx.stage.Stage;
-import org.core.processors.Processor;
+import org.core.processors.ProcessorJavaFX;
 
 // TODO: Temporarily do not use until I fix display issues. Currently using Mainframe.java
 public class JavaFxGui extends Application {
 
-    Processor processor = new Processor();
+    ProcessorJavaFX processor = new ProcessorJavaFX();
 
     // TODO: Sort logging as all text is red and not in a single line
 
