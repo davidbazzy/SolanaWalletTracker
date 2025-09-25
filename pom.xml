@@ -19,17 +19,17 @@
         <dependency>
             <groupId>software.sava</groupId>
             <artifactId>sava-core</artifactId>
-            <version>1.17.28</version>
+            <version>25.0.0</version>
         </dependency>
         <dependency>
             <groupId>software.sava</groupId>
             <artifactId>sava-rpc</artifactId>
-            <version>1.17.28</version>
+            <version>25.0.0</version>
         </dependency>
         <dependency>
             <groupId>software.sava</groupId>
             <artifactId>solana-programs</artifactId>
-            <version>1.18.4</version>
+            <version>25.0.0</version>
         </dependency>
         <dependency>
             <groupId>org.json</groupId>

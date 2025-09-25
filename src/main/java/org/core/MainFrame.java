@@ -20,6 +20,7 @@ public class MainFrame extends JFrame {
         setLayout(new BorderLayout());
 
         processor = new Processor();
+        processor.start();
 
         outputArea = new JTextArea();
         outputArea.setEditable(false);

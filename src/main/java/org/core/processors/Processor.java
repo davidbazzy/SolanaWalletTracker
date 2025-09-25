@@ -17,6 +17,9 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -46,15 +49,26 @@ public class Processor {
 
     private final MarketDataProcessor m_marketDataProcessor;
 
+    // Better use over raw threads which are self-managed
+    private final ScheduledExecutorService m_scheduler;
+
     public Processor() {
         final HttpClient httpClient = HttpClient.newHttpClient();
         m_solanaRpc = SolanaRpcClient.createClient(SolanaNetwork.MAIN_NET.getEndpoint(), httpClient);
         m_marketDataProcessor = new MarketDataProcessor(httpClient);
         m_dbConnection = DatabaseConnUtil.initiateDbConnection();
-        initiateMarketDataThread();
-        initiatePositionUpdateThread();
         DatabaseConnUtil.loadTokensFromDb(m_dbConnection, m_tokenMap);
         m_walletService = new WalletService(m_solanaRpc, m_wallets, m_tokenMap, m_activetokenMap, m_dbConnection);
+        m_scheduler = Executors.newScheduledThreadPool(2);
+    }
+
+    public void start() {
+        initiateMarketDataThread();
+        initiatePositionUpdateThread();
+    }
+
+    public void stop() {
+        m_scheduler.shutdownNow();
     }
 
     public void handleWalletAddressInput(JTextArea outputArea, String input) {
@@ -63,6 +77,7 @@ public class Processor {
             switch (input) {
                 case m_systemExit:
                     outputArea.append("Shutting down gracefully\n");
+                    stop();
 
                     try {
                         m_dbConnection.close();
@@ -90,26 +105,19 @@ public class Processor {
     }
 
     private void initiateMarketDataThread() {
-        // initiate market data thread
-        Thread marketDataThread = new Thread(() -> {
-            while(true) {
-                logger.log(Level.INFO,"Fetching market data...");
+        m_scheduler.scheduleAtFixedRate(() -> {
+            try {
+                logger.log(Level.INFO, "Fetching market data...");
                 m_marketDataProcessor.processMarketData(m_tokenMap);
-                try {
-                    Thread.sleep(15000);
-                } catch (InterruptedException e) {
-                    logger.log(Level.SEVERE, "Market Data Thread has thrown an Exception", e);
-                }
+            } catch (Exception e) {
+                logger.log(Level.SEVERE, "Market Data Thread has thrown an Exception", e);
             }
-        }, "MarketDataThread");
-
-        marketDataThread.start();
+        }, 0, 15, TimeUnit.SECONDS);
     }
 
-    // In Processor.java
     private void initiatePositionUpdateThread() {
-        Thread positionUpdateThread = new Thread(() -> {
-            while (true) {
+        m_scheduler.scheduleAtFixedRate(() -> {
+            try {
                 logger.log(Level.INFO, "Updating positions...");
                 for (Wallet wallet : m_wallets.values()) {
                     for (Position position : wallet.getPositions().values()) {
@@ -117,14 +125,10 @@ public class Processor {
                     }
                 }
                 logger.log(Level.INFO, "Positions updated!");
-                try {
-                    Thread.sleep(15000); // Update every 15 seconds
-                } catch (InterruptedException e) {
-                    logger.log(Level.SEVERE, "Positions Update Thread has thrown an Exception", e);
-                }
+            } catch (Exception e) {
+                logger.log(Level.SEVERE, "Positions Update Thread has thrown an Exception", e);
             }
-        }, "PositionUpdateThread");
-        positionUpdateThread.start();
+        }, 0, 15, TimeUnit.SECONDS);
     }
 
 }
