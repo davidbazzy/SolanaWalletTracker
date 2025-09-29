@@ -82,6 +82,8 @@ public class DatabaseConnUtil {
         }
     }
 
+    // TODO: Review storing positions in DB... might not be worth it. Might be worth just storing wallet addresses
+    // and upon every start up, active positions for these wallets
     public static void persistPositionToDb(Connection connection, String walletAddress, String positionAccountAddress, String tokenMintAddress, String tokenTicker, double balance) {
         String sql = """
                        INSERT INTO position (wallet_address, position_account_address, token_mint_address, 
@@ -103,7 +105,6 @@ public class DatabaseConnUtil {
         }
     }
 
-    // TODO: Amend method to only load Tokens which are part of the WALLETs that have been stored in the DB
     public static void loadTokensFromDb(Connection connection, Map<String, Token> tokensMap) {
         String sql = "SELECT * FROM token";
 

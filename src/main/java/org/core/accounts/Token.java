@@ -1,6 +1,5 @@
 package org.core.accounts;
 
-import org.core.helius.HeliusAssetResponse;
 import org.core.prices.MarketData;
 
 public class Token {
@@ -14,8 +13,6 @@ public class Token {
     private final int decimals;
 
     private MarketData marketData;
-
-    private HeliusAssetResponse heliusAssetResponse;
 
     public Token(String mintAddress, String name, String ticker, int decimals) {
         this.mintAddress = mintAddress;

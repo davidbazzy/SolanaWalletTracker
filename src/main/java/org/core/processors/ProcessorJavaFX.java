@@ -20,15 +20,16 @@ import java.util.logging.Logger;
 
 public class ProcessorJavaFX {
 
-    private static final Logger logger = Logger.getLogger(Processor.class.getName());
+    // TODO: To work on JavaFX implementation once cmd implementation is complete & efficient
+    /*private static final Logger logger = Logger.getLogger(Processor.class.getName());
 
     private final SolanaRpcClient m_solanaRpc;
 
     private final WalletService m_walletService;
 
-    private final Map<String, Token> m_tokenMap = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Token> m_tokenMap = new ConcurrentHashMap<>();
 
-    private final Map<String, Token> m_activetokenMap = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Token> m_sessionTokenMap = new ConcurrentHashMap<>();
 
     private final Map<String, Wallet> m_wallets = new ConcurrentHashMap<>();
 
@@ -53,7 +54,7 @@ public class ProcessorJavaFX {
         //initiateMarketDataThread();
         //initiatePositionUpdateThread();
         DatabaseConnUtil.loadTokensFromDb(m_dbConnection, m_tokenMap);
-        m_walletService = new WalletService(m_solanaRpc, m_wallets, m_tokenMap, m_activetokenMap, m_dbConnection);
+        m_walletService = new WalletService(m_solanaRpc, m_wallets, m_tokenMap,  m_dbConnection);
     }
 
 
@@ -89,5 +90,5 @@ public class ProcessorJavaFX {
         } else {
             outputArea.appendText("❌ Invalid wallet address \n");
         }
-    }
+    }*/
 }

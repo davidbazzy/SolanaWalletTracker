@@ -29,7 +29,7 @@ public class MainFrame extends JFrame {
         inputField = new JTextField();
         inputField.addActionListener(e -> {
             String input = inputField.getText();
-            inputField.setText("");
+            inputField.setText("Input wallet name and address using the format: <wallet_name>:<wallet_address>\n");
             processor.handleWalletAddressInput(outputArea, input);
         });
         add(inputField, BorderLayout.SOUTH);

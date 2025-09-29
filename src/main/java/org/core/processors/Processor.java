@@ -1,6 +1,7 @@
 package org.core.processors;
 
 import javafx.scene.control.TextArea;
+import org.apache.commons.lang3.tuple.Pair;
 import org.core.accounts.Position;
 import org.core.accounts.Token;
 import org.core.accounts.Wallet;
@@ -31,11 +32,13 @@ public class Processor {
 
     private final WalletService m_walletService;
 
-    private final Map<String, Token> m_tokenMap = new ConcurrentHashMap<>();
+    // Contains all tokens loaded from db
+    private final ConcurrentHashMap<String, Token> m_tokenMap = new ConcurrentHashMap<>();
 
-    private final Map<String, Token> m_activetokenMap = new ConcurrentHashMap<>();
+    // Contains tokens relevant for current session only
+    private final ConcurrentHashMap<String, Token> m_sessionTokenMap = new ConcurrentHashMap<>();
 
-    private final Map<String, Wallet> m_wallets = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Wallet> m_wallets = new ConcurrentHashMap<>();
 
     private static final String m_systemExit = "0";
 
@@ -58,7 +61,7 @@ public class Processor {
         m_marketDataProcessor = new MarketDataProcessor(httpClient);
         m_dbConnection = DatabaseConnUtil.initiateDbConnection();
         DatabaseConnUtil.loadTokensFromDb(m_dbConnection, m_tokenMap);
-        m_walletService = new WalletService(m_solanaRpc, m_wallets, m_tokenMap, m_activetokenMap, m_dbConnection);
+        m_walletService = new WalletService(m_solanaRpc, m_wallets, m_tokenMap, m_sessionTokenMap, m_dbConnection);
         m_scheduler = Executors.newScheduledThreadPool(2);
     }
 
@@ -96,11 +99,14 @@ public class Processor {
                     UserInterfaceDisplayUtil.displayCommonTokensAcrossWalletsCmd(outputArea, m_wallets, m_tokenMap);
                     break;
             }
-        } else if (ValidationUtil.validateAddressFormat(input)) {
-            logger.log(Level.INFO, "Valid Wallet address format: " + input);
-            m_walletService.processWalletForCmd(input, outputArea);
         } else {
-            outputArea.append("Invalid input\n");
+            Pair<String, String> walletAddressAndLabel = ValidationUtil.extractNameAndAddress(input);
+
+            if (walletAddressAndLabel != null) {
+                m_walletService.processWalletForCmd(outputArea, walletAddressAndLabel);
+            } else {
+                outputArea.append("❌ Invalid wallet input format. Please use: <wallet_name>:<wallet_address>\n");
+            }
         }
     }
 
@@ -108,7 +114,7 @@ public class Processor {
         m_scheduler.scheduleAtFixedRate(() -> {
             try {
                 logger.log(Level.INFO, "Fetching market data...");
-                m_marketDataProcessor.processMarketData(m_tokenMap);
+                m_marketDataProcessor.processMarketData(m_sessionTokenMap);
             } catch (Exception e) {
                 logger.log(Level.SEVERE, "Market Data Thread has thrown an Exception", e);
             }

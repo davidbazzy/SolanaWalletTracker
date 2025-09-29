@@ -2,6 +2,7 @@ package org.core.utils;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.commons.lang3.tuple.Pair;
 import org.core.helius.HeliusAssetResponse;
 import org.core.accounts.Position;
 import org.core.accounts.Token;
@@ -18,6 +19,7 @@ import java.sql.Connection;
 import java.util.*;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -26,47 +28,47 @@ import java.util.logging.Logger;
 public class WalletService {
 
     private final SolanaRpcClient m_solanaRpc;
-    private final Map<String, Wallet> m_wallets; // Use ConcurrentHashMap
-    private final Map<String, Token> m_tokenMap;
-    private final Map<String, Token> m_activeTokenMap;
+
+    private final Map<String, Wallet> m_wallets;
+
+    private final ConcurrentHashMap<String, Token> m_tokenMap;
+    private final ConcurrentHashMap<String, Token> m_sessionTokenMap;
+
     private final Connection m_dbConnection;
+
     private static final Logger logger = Logger.getLogger(WalletService.class.getName());
+
     private static final PublicKey s_Token_Program_Public_Key = PublicKey.fromBase58Encoded("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
+
     private static final String s_unknownToken = "Unknown Token";
     private static final String s_unknownSymbol = "Unknown Symbol";
 
-    public WalletService(SolanaRpcClient m_solanaRpc, Map<String, Wallet> wallets, Map<String, Token> tokenMap,
-                         Map<String, Token> activeTokenMap, Connection dbConnection) {
-        this.m_solanaRpc = m_solanaRpc;
-        this.m_wallets = wallets;
-        this.m_tokenMap = tokenMap;
-        this.m_activeTokenMap = activeTokenMap;
-        this.m_dbConnection = dbConnection;
+    public WalletService(SolanaRpcClient solanaRpc, Map<String, Wallet> wallets, ConcurrentHashMap<String, Token> tokenMap,
+                         ConcurrentHashMap<String, Token> sessionTokenMap, Connection dbConnection) {
+        m_solanaRpc = solanaRpc;
+        m_wallets = wallets;
+        m_tokenMap = tokenMap;
+        m_dbConnection = dbConnection;
+        m_sessionTokenMap = sessionTokenMap;
     }
 
-    public void processWalletForCmd(String walletDetails, JTextArea outputArea) {
+    public void processWalletForCmd(JTextArea outputArea, Pair<String, String> walletAddressAndLabel) {
         Wallet wallet;
-        String[] walletInputSplit = walletDetails.split(":");
 
-        if (walletInputSplit.length != 2) {
-            outputArea.append("❌ Invalid wallet input format. Please use: <wallet_address>:<wallet_name>\n");
-            return;
-        }
-
-        String walletAddress = walletInputSplit[0];
-        String walletName = walletInputSplit[1];
+        String walletAddress = walletAddressAndLabel.getRight();
+        String walletName = walletAddressAndLabel.getLeft();
 
         if (m_wallets.containsKey(walletAddress)) { // TODO: Will need to consider cases where a token has been sold from a wallet
             wallet = m_wallets.get(walletAddress);
             DatabaseConnUtil.persistWalletToDb(m_dbConnection, wallet); // Updates existing sol balance in db for wallet
-            processWalletTokens(m_solanaRpc, wallet, m_tokenMap, m_activeTokenMap, m_dbConnection);
+            processWalletTokens(wallet);
         } else {
             PublicKey publicKey = PublicKey.fromBase58Encoded(walletAddress);
             AccountInfo<byte[]> accountInfo = getAccount(m_solanaRpc, publicKey);
 
             if (accountInfo != null) {
                 wallet = new Wallet(walletAddress, walletName, accountInfo.lamports(), publicKey);
-                processWalletTokens(m_solanaRpc, wallet, m_tokenMap, m_activeTokenMap, m_dbConnection);
+                processWalletTokens(wallet);
                 DatabaseConnUtil.persistWalletToDb(m_dbConnection, wallet);
                 m_wallets.put(walletAddress, wallet);
             } else {
@@ -83,13 +85,12 @@ public class WalletService {
 
     }
 
-    public void processWalletTokens(SolanaRpcClient rpcClient, Wallet wallet, Map<String, Token> tokenMap, Map<String, Token> activeTokenMap,
-                                           Connection dbConn) {
+    public void processWalletTokens(Wallet wallet) {
         // Retrieve and parse token accounts in AccountInfoList to get tokens and store these in the wallet object
-        List<AccountInfo<TokenAccount>> accountInfoList = getAccountList(rpcClient, wallet.getPublicKey());
+        List<AccountInfo<TokenAccount>> accountInfoList = getAccountList(m_solanaRpc, wallet.getPublicKey());
 
         if (accountInfoList != null) {
-            parseTokenAccounts(accountInfoList, wallet, tokenMap, dbConn);
+            parseTokenAccounts(accountInfoList, wallet);
         }
     }
 
@@ -97,14 +98,11 @@ public class WalletService {
      *  Using CompletableFutures to source token details asynchronously as this is much faster than doing this in just one thread (synchronously)
      *  Execution time for a wallet with 43 tokens was 0.17s (as opposed to 3.6s synchronously)
      */
-    public void parseTokenAccounts(List<AccountInfo<TokenAccount>> accountInfoList, Wallet wallet,
-                                          Map<String, Token> tokenMap, Connection dbConn) {
+    private void parseTokenAccounts(List<AccountInfo<TokenAccount>> accountInfoList, Wallet wallet) {
         List<CompletableFuture<Void>> futures = new ArrayList<>();
 
         //Log time taken to parse through all token accounts for a given wallet
         long startTime = System.nanoTime();
-
-        int heliusQueryCount = 0;
         int processedTokens = 1;
 
         for (AccountInfo<TokenAccount> accountInfo : accountInfoList) {
@@ -114,17 +112,15 @@ public class WalletService {
             // Filter accounts whose balance is 0
             if (tokenAccount.amount() == 0) continue;
 
-            CompletableFuture<Void> future = fetchTokenDetails(tokenMintAddress, processedTokens, wallet, tokenMap, dbConn, tokenAccount);
-            heliusQueryCount++;
+            CompletableFuture<Void> future = fetchTokenDetails(tokenMintAddress, processedTokens, wallet, tokenAccount);
 
             try {
-                if (heliusQueryCount % 6 == 0) {
+                if (processedTokens % 6 == 0) {
                     Thread.sleep(3000); //sleep for 2s to manage rate limits (10 rqs)
                     logger.log(Level.INFO, "Sleeping for 2s... token #" + processedTokens);
-                    heliusQueryCount++;
                 }
             } catch (InterruptedException e) {
-                logger.log(Level.SEVERE, "Thread interrupted: " + e.getMessage());
+                logger.log(Level.SEVERE, "Thread interrupted while processing token #" + processedTokens + " : " + e.getMessage());
             }
 
             futures.add(future);
@@ -140,29 +136,34 @@ public class WalletService {
     }
 
     private CompletableFuture<Void> fetchTokenDetails(String tokenMintAddress, Integer processedTokens, Wallet wallet,
-                                                      Map<String, Token> tokenMap, Connection dbConn, TokenAccount tokenAccount) {
+                                                      TokenAccount tokenAccount) {
 
-        boolean tokenExistsinMap = tokenMap.containsKey(tokenMintAddress);
+        boolean tokenExistsinMap = m_tokenMap.containsKey(tokenMintAddress);
 
         if (!tokenExistsinMap) {
             logger.log(Level.INFO, "Fetching Metadata for Token #" + processedTokens + ": " + tokenMintAddress);
         } else {
             logger.log(Level.INFO, "Fetching Metadata for Token #" + processedTokens + " loaded from DB: " + tokenMintAddress);
         }
+
         // Asynchronously fetch token details
         CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
             Token token;
             if (tokenExistsinMap) {
-                token = tokenMap.get(tokenMintAddress);
+                token = m_tokenMap.get(tokenMintAddress);
             } else {
-                token = createTokenUsingHelius( tokenMintAddress);
-                DatabaseConnUtil.persistTokenToDb(dbConn, token);
-                tokenMap.put(token.getMintAddress(), token);
+                // Query Helius API for token & persist to DB
+                token = createTokenUsingHelius(tokenMintAddress);
+                DatabaseConnUtil.persistTokenToDb(m_dbConnection, token);
+                m_tokenMap.put(tokenMintAddress, token);
             }
 
+            m_sessionTokenMap.put(tokenMintAddress, token);
             double balance = tokenAccount.amount() / Math.pow(10, token.getDecimals());
             Position position = new Position(wallet.getAddress(), tokenAccount.address().toBase58(), token, balance);
-            DatabaseConnUtil.persistPositionToDb(dbConn, wallet.getAddress(), position.getAccountAddress(), tokenMintAddress, token.getTicker(), balance);
+
+            // TODO: TO BE REVIEWED
+            //DatabaseConnUtil.persistPositionToDb(dbConn, wallet.getAddress(), position.getAccountAddress(), tokenMintAddress, token.getTicker(), balance);
             wallet.addPosition(position);
         });
 
@@ -259,19 +260,19 @@ public class WalletService {
     }
 
     // TODO: To be used once I switch from cmd to JavaFX
-    public Wallet processWalletForJavaFx(String walletAddress) {
+    /*public Wallet processWalletForJavaFx(String walletAddress) {
         Wallet wallet;
 
         if (m_wallets.containsKey(walletAddress)) { // TODO: Will need to consider cases where a token has been sold from a wallet
             wallet = m_wallets.get(walletAddress);
-            processWalletTokens(m_solanaRpc, wallet, m_tokenMap, m_activeTokenMap, m_dbConnection);
+            processWalletTokens(m_solanaRpc, wallet, m_tokenMap, m_dbConnection);
         } else {
             PublicKey publicKey = PublicKey.fromBase58Encoded(walletAddress);
             AccountInfo<byte[]> accountInfo = getAccount(m_solanaRpc, publicKey);
 
             if (accountInfo != null) {
                 wallet = new Wallet(walletAddress, "temp name", accountInfo.lamports(), publicKey);
-                processWalletTokens(m_solanaRpc, wallet, m_tokenMap, m_activeTokenMap, m_dbConnection);
+                processWalletTokens(m_solanaRpc, wallet, m_tokenMap, m_dbConnection);
                 m_wallets.put(walletAddress, wallet);
             } else {
                 wallet = null;
@@ -280,6 +281,6 @@ public class WalletService {
         }
 
         return wallet;
-    }
+    }*/
 
 }
