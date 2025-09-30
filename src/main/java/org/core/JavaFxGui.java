@@ -46,7 +46,7 @@ public class JavaFxGui extends Application {
         exitButton.setStyle(buttonStyle + "-fx-background-color: #f44336;");
 
         // Button Actions
-        submitButton.setOnAction(e -> {
+        /*submitButton.setOnAction(e -> {
             outputArea.clear();
             processor.handleWalletAddressInput(outputArea, walletInput.getText());
             walletInput.clear();
@@ -65,7 +65,7 @@ public class JavaFxGui extends Application {
             outputArea.appendText("📈 Portfolio Analysis:\n- Total Value: $12,450\n- Daily Change: +3.2%\n- Diversification Score: 8/10\n");
         });
 
-        exitButton.setOnAction(e -> primaryStage.close());
+        exitButton.setOnAction(e -> primaryStage.close());*/
 
         // Layout
         VBox layout = new VBox(10);

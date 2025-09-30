@@ -32,6 +32,7 @@ public class WalletService {
     private final Map<String, Wallet> m_wallets;
 
     private final ConcurrentHashMap<String, Token> m_tokenMap;
+
     private final ConcurrentHashMap<String, Token> m_sessionTokenMap;
 
     private final Connection m_dbConnection;
@@ -41,6 +42,7 @@ public class WalletService {
     private static final PublicKey s_Token_Program_Public_Key = PublicKey.fromBase58Encoded("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
 
     private static final String s_unknownToken = "Unknown Token";
+
     private static final String s_unknownSymbol = "Unknown Symbol";
 
     public WalletService(SolanaRpcClient solanaRpc, Map<String, Wallet> wallets, ConcurrentHashMap<String, Token> tokenMap,
@@ -82,7 +84,6 @@ public class WalletService {
         if (wallet != null) {
             outputArea.append(String.format("🔃 Active positions: %s \n", wallet.getPositions().size()));
         }
-
     }
 
     public void processWalletTokens(Wallet wallet) {
@@ -162,7 +163,7 @@ public class WalletService {
             double balance = tokenAccount.amount() / Math.pow(10, token.getDecimals());
             Position position = new Position(wallet.getAddress(), tokenAccount.address().toBase58(), token, balance);
 
-            // TODO: TO BE REVIEWED
+            // TODO: TO BE REVIEWED, do we want to store position in db?
             //DatabaseConnUtil.persistPositionToDb(dbConn, wallet.getAddress(), position.getAccountAddress(), tokenMintAddress, token.getTicker(), balance);
             wallet.addPosition(position);
         });

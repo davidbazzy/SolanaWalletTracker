@@ -61,6 +61,7 @@ public class Processor {
         m_marketDataProcessor = new MarketDataProcessor(httpClient);
         m_dbConnection = DatabaseConnUtil.initiateDbConnection();
         DatabaseConnUtil.loadTokensFromDb(m_dbConnection, m_tokenMap);
+        // TODO: Load stored wallets from db here and call process wallet logic?
         m_walletService = new WalletService(m_solanaRpc, m_wallets, m_tokenMap, m_sessionTokenMap, m_dbConnection);
         m_scheduler = Executors.newScheduledThreadPool(2);
     }

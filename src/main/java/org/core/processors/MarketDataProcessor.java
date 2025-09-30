@@ -7,19 +7,15 @@ import org.core.utils.RestApiUtil;
 import org.json.JSONObject;
 
 import java.net.http.HttpClient;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 public class MarketDataProcessor {
 
     private static final Logger logger = Logger.getLogger(MarketDataProcessor.class.getName());
-
-    private final Map<String, MarketData> m_marketDataMap = new ConcurrentHashMap<>();
 
     private final HttpClient m_httpClient;
 
@@ -29,17 +25,17 @@ public class MarketDataProcessor {
         m_httpClient = httpClient;
     }
 
-    public void processMarketData(Map<String, Token> tokensMap) {
-        logger.log(Level.INFO, "Size of tokens available = " + tokensMap.size());
-        fetchMarketData(tokensMap);
+    public void processMarketData(Map<String, Token> sessionTokenMap) {
+        logger.log(Level.INFO, "Size of tokens available = " + sessionTokenMap.size());
+        fetchMarketData(sessionTokenMap);
     }
 
-    public void fetchMarketData(Map<String, Token> tokensMap) {
+    public void fetchMarketData(Map<String, Token> sessionTokenMap) {
         logger.log(Level.INFO, "Fetching market data...");
 
-        String[] tokenIdArray = appendTokenIds(tokensMap, tokensWithNoMktData);
+        String[] tokenIdArray = appendTokenIds(sessionTokenMap, tokensWithNoMktData);
 
-        if(tokenIdArray == null) {
+        if (tokenIdArray == null) {
             logger.log(Level.WARNING, "No token IDs found to fetch market data");
             return;
         }
@@ -53,10 +49,15 @@ public class MarketDataProcessor {
                 return;
             }
 
-            // Iterate over active tokens and update their prices
-            for (String tokenMintAddress : tokensMap.keySet()) {
-                if (data.has(tokenMintAddress)) {
+            Token token;
+            String tokenMintAddress;
 
+            // Iterate over active tokens and update their prices
+            for (Map.Entry<String, Token> tokenEntry : sessionTokenMap.entrySet()) {
+                tokenMintAddress = tokenEntry.getKey();
+                token = tokenEntry.getValue();
+
+                if (data.has(tokenMintAddress)) {
                     if(data.isNull(tokenMintAddress)){
                         if (!tokensWithNoMktData.contains(tokenMintAddress)) {
                             // TODO: Tokens without a price from Jupiter are most likely spam coins. Create a blacklist table for these tokens in db
@@ -69,27 +70,21 @@ public class MarketDataProcessor {
                     JSONObject tokenData = data.getJSONObject(tokenMintAddress);
 
                     double price = tokenData.getDouble("price");
+                    MarketData existingMarketData = token.getMarketData();
 
-                    // Check if MarketData already exists for token
-                    if (m_marketDataMap.containsKey(tokenMintAddress)) {
-                        MarketData marketData = m_marketDataMap.get(tokenMintAddress);
-                        marketData.setUsdPrice(price);
+                    // Check if market data already exists for token
+                    if (existingMarketData != null) {
+                        existingMarketData.setUsdPrice(price);
                     } else {
                         MarketData marketData = new MarketData(tokenMintAddress, price);
-                        m_marketDataMap.put(tokenMintAddress, marketData);
-                        //tokensMap.get(tokenMintAddress).setMarketData(marketData);
-                    }
-
-                    // update tokensMap
-                    if (tokensMap.get(tokenMintAddress).getMarketData() == null) {
-                        tokensMap.get(tokenMintAddress).setMarketData(m_marketDataMap.get(tokenMintAddress));
+                        token.setMarketData(marketData);
                     }
                 }
             }
 
             try {
                 logger.log(Level.INFO, "Sleeping for 4 seconds to manage jupiter price rate limits");
-                Thread.sleep(4000); // Sleep for 4 seconds to manage jupiter price rate limits
+                Thread.sleep(4000);
             } catch (InterruptedException e) {
                 logger.log(Level.SEVERE, "Thread Sleep command for mkt data interrupted: " + e.getMessage());
             }
@@ -99,7 +94,7 @@ public class MarketDataProcessor {
     }
 
     public void applyMarketData(Position position) {
-        MarketData marketData = m_marketDataMap.get(position.getToken().getMintAddress());
+        MarketData marketData = position.getToken().getMarketData();
         if (marketData != null) {
             double usdPrice = marketData.getUsdPrice();
             double usdBalance = position.getTokenBalance() * usdPrice;
@@ -112,21 +107,21 @@ public class MarketDataProcessor {
         Jupiter API has a limit of 100 tokens per request.
         To avoid hitting the rate limit, we need to split the token IDs into chunks of 100.
      */
-    private String[] appendTokenIds(Map<String, Token> tokensMap, Set<String> tokensWithNoMktData) {
+    private String[] appendTokenIds(Map<String, Token> sessionTokenMap, Set<String> tokensWithNoMktData) {
 
         try {
-            if(tokensMap.isEmpty()) {
+            if (sessionTokenMap.isEmpty()) {
                 return null;
             }
 
-            int mktDataBatches = (int) Math.ceil((double) tokensMap.size() / 99);
+            int mktDataBatches = (int) Math.ceil((double) sessionTokenMap.size() / 99);
             String[] tokenIdArray = new String[mktDataBatches];
 
             StringBuilder tokenIds = new StringBuilder();
             int batchCounter = 0;
 
-            for (int i = 0; i < tokensMap.size(); i++) {
-                String tokenMintAddress = (String) tokensMap.keySet().toArray()[i];
+            for (int i = 0; i < sessionTokenMap.size(); i++) {
+                String tokenMintAddress = (String) sessionTokenMap.keySet().toArray()[i];
 
                 if (i != 0 && i % 99 == 0 ) {
                     tokenIdArray[batchCounter] = tokenIds.toString();
