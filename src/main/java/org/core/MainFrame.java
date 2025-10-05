@@ -19,13 +19,12 @@ public class MainFrame extends JFrame {
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLayout(new BorderLayout());
 
-        processor = new Processor();
-        processor.start();
 
         outputArea = new JTextArea();
         outputArea.setEditable(false);
         add(new JScrollPane(outputArea), BorderLayout.CENTER);
 
+        processor = new Processor();
         inputField = new JTextField();
         inputField.addActionListener(e -> {
             String input = inputField.getText();
@@ -33,6 +32,7 @@ public class MainFrame extends JFrame {
             processor.handleWalletAddressInput(outputArea, input);
         });
         add(inputField, BorderLayout.SOUTH);
+        processor.start(outputArea);
     }
 
 

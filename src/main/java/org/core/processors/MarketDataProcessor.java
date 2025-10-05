@@ -10,6 +10,7 @@ import java.net.http.HttpClient;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -19,26 +20,26 @@ public class MarketDataProcessor {
 
     private final HttpClient m_httpClient;
 
+    private final ConcurrentHashMap<String, Token> m_sessionTokenMap;
+
     private final Set<String> tokensWithNoMktData = new HashSet<>();
 
-    public MarketDataProcessor(HttpClient httpClient) {
+    public MarketDataProcessor(HttpClient httpClient, ConcurrentHashMap<String, Token> sessionTokenMap) {
         m_httpClient = httpClient;
+        m_sessionTokenMap = sessionTokenMap;
     }
 
-    public void processMarketData(Map<String, Token> sessionTokenMap) {
-        logger.log(Level.INFO, "Size of tokens available = " + sessionTokenMap.size());
-        fetchMarketData(sessionTokenMap);
-    }
+    public void processMarketData() {
+        logger.log(Level.INFO, "Fetching market data for token size: " + m_sessionTokenMap.size());
 
-    public void fetchMarketData(Map<String, Token> sessionTokenMap) {
-        logger.log(Level.INFO, "Fetching market data...");
-
-        String[] tokenIdArray = appendTokenIds(sessionTokenMap, tokensWithNoMktData);
-
-        if (tokenIdArray == null) {
+        if (m_sessionTokenMap.isEmpty()) {
             logger.log(Level.WARNING, "No token IDs found to fetch market data");
             return;
         }
+
+        String[] tokenIdArray = appendTokenIds(m_sessionTokenMap, tokensWithNoMktData);
+
+        if (tokenIdArray == null) return;
 
         for (int i = 0; i < tokenIdArray.length; i++) {
             logger.log(Level.INFO, "Fetching market data for token batch: " + (i + 1) + " of " + tokenIdArray.length);
@@ -52,8 +53,8 @@ public class MarketDataProcessor {
             Token token;
             String tokenMintAddress;
 
-            // Iterate over active tokens and update their prices
-            for (Map.Entry<String, Token> tokenEntry : sessionTokenMap.entrySet()) {
+            // Iterate over tokens in session and update market data object
+            for (Map.Entry<String, Token> tokenEntry : m_sessionTokenMap.entrySet()) {
                 tokenMintAddress = tokenEntry.getKey();
                 token = tokenEntry.getValue();
 
@@ -93,7 +94,7 @@ public class MarketDataProcessor {
         logger.log(Level.INFO, "Fetching market data complete!");
     }
 
-    public void applyMarketData(Position position) {
+    public void applyMarketDataToPosition(Position position) {
         MarketData marketData = position.getToken().getMarketData();
         if (marketData != null) {
             double usdPrice = marketData.getUsdPrice();
@@ -104,16 +105,10 @@ public class MarketDataProcessor {
     }
 
     /**
-        Jupiter API has a limit of 100 tokens per request.
-        To avoid hitting the rate limit, we need to split the token IDs into chunks of 100.
+        Jupiter API has a limit of 100 tokens per request. Limit calls to 100 tokens at a time
      */
     private String[] appendTokenIds(Map<String, Token> sessionTokenMap, Set<String> tokensWithNoMktData) {
-
         try {
-            if (sessionTokenMap.isEmpty()) {
-                return null;
-            }
-
             int mktDataBatches = (int) Math.ceil((double) sessionTokenMap.size() / 99);
             String[] tokenIdArray = new String[mktDataBatches];
 
@@ -138,7 +133,7 @@ public class MarketDataProcessor {
 
             return tokenIdArray;
         } catch (Exception e) {
-            logger.log(Level.SEVERE, "Error while appending token IDs: " + e.getMessage());
+            logger.log(Level.SEVERE, "Encountered exception while appending token IDs: " + e.getMessage());
         }
 
         return null;

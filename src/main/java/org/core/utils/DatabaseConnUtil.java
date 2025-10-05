@@ -1,5 +1,7 @@
 package org.core.utils;
 
+import org.apache.commons.lang3.tuple.ImmutablePair;
+import org.apache.commons.lang3.tuple.Pair;
 import org.core.accounts.Token;
 import org.core.accounts.Wallet;
 
@@ -7,8 +9,11 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.sql.*;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -105,11 +110,28 @@ public class DatabaseConnUtil {
         }
     }
 
-    public static void loadTokensFromDb(Connection connection, Map<String, Token> tokensMap) {
+    public static Set<Pair<String,String>> loadWalletsFromDb(Connection connection) {
+        HashSet<Pair<String,String>> wallets = new HashSet<>();
+        String sql = "SELECT * FROM wallets";
+
+        try (Statement statement = connection.createStatement(); ResultSet resultSet = statement.executeQuery(sql)) {
+            while (resultSet.next()) {
+                String name = resultSet.getString("wallet_name");
+                String address = resultSet.getString("wallet_address");
+                Pair<String,String> walletDetails = new ImmutablePair<>(name,address);
+                wallets.add(walletDetails);
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+
+        return wallets;
+    }
+
+    public static void loadTokensFromDb(Connection connection, ConcurrentHashMap<String, Token> tokensMap) {
         String sql = "SELECT * FROM token";
 
         try (Statement statement = connection.createStatement(); ResultSet resultSet = statement.executeQuery(sql)) {
-
             while (resultSet.next()) {
                 String mintAddress = resultSet.getString("mint_address");
                 String name = resultSet.getString("name");

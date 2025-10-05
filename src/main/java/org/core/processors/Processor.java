@@ -1,6 +1,5 @@
 package org.core.processors;
 
-import javafx.scene.control.TextArea;
 import org.apache.commons.lang3.tuple.Pair;
 import org.core.accounts.Position;
 import org.core.accounts.Token;
@@ -28,8 +27,6 @@ public class Processor {
 
     private static final Logger logger = Logger.getLogger(Processor.class.getName());
 
-    private final SolanaRpcClient m_solanaRpc;
-
     private final WalletService m_walletService;
 
     // Contains all tokens loaded from db
@@ -46,7 +43,7 @@ public class Processor {
 
     private static final String m_overlappingTokens = "o";
 
-    private Connection m_dbConnection;
+    private final Connection m_dbConnection;
 
     private static final Set<String> m_validCommands = Set.of(m_holdings, m_systemExit, m_overlappingTokens);
 
@@ -57,16 +54,15 @@ public class Processor {
 
     public Processor() {
         final HttpClient httpClient = HttpClient.newHttpClient();
-        m_solanaRpc = SolanaRpcClient.createClient(SolanaNetwork.MAIN_NET.getEndpoint(), httpClient);
-        m_marketDataProcessor = new MarketDataProcessor(httpClient);
+        m_marketDataProcessor = new MarketDataProcessor(httpClient, m_sessionTokenMap);
         m_dbConnection = DatabaseConnUtil.initiateDbConnection();
-        DatabaseConnUtil.loadTokensFromDb(m_dbConnection, m_tokenMap);
-        // TODO: Load stored wallets from db here and call process wallet logic?
-        m_walletService = new WalletService(m_solanaRpc, m_wallets, m_tokenMap, m_sessionTokenMap, m_dbConnection);
+        SolanaRpcClient solanaRpc = SolanaRpcClient.createClient(SolanaNetwork.MAIN_NET.getEndpoint(), httpClient);
+        m_walletService = new WalletService(solanaRpc, m_wallets, m_tokenMap, m_sessionTokenMap, m_dbConnection);
         m_scheduler = Executors.newScheduledThreadPool(2);
     }
 
-    public void start() {
+    public void start(JTextArea outputArea) {
+        loadWalletsAndTokensFromDb(outputArea);
         initiateMarketDataThread();
         initiatePositionUpdateThread();
     }
@@ -114,12 +110,22 @@ public class Processor {
     private void initiateMarketDataThread() {
         m_scheduler.scheduleAtFixedRate(() -> {
             try {
-                logger.log(Level.INFO, "Fetching market data...");
-                m_marketDataProcessor.processMarketData(m_sessionTokenMap);
+                m_marketDataProcessor.processMarketData();
             } catch (Exception e) {
                 logger.log(Level.SEVERE, "Market Data Thread has thrown an Exception", e);
             }
         }, 0, 15, TimeUnit.SECONDS);
+    }
+
+    private void loadWalletsAndTokensFromDb(JTextArea outputArea) {
+        DatabaseConnUtil.loadTokensFromDb(m_dbConnection, m_tokenMap);
+
+        // Fetch list of wallet names
+        Set<Pair<String,String>> walletAddresses = DatabaseConnUtil.loadWalletsFromDb(m_dbConnection);
+
+        for (Pair<String,String> walletAddress : walletAddresses) {
+            m_walletService.processWalletForCmd(outputArea, walletAddress);
+        }
     }
 
     private void initiatePositionUpdateThread() {
@@ -128,7 +134,7 @@ public class Processor {
                 logger.log(Level.INFO, "Updating positions...");
                 for (Wallet wallet : m_wallets.values()) {
                     for (Position position : wallet.getPositions().values()) {
-                        m_marketDataProcessor.applyMarketData(position);
+                        m_marketDataProcessor.applyMarketDataToPosition(position);
                     }
                 }
                 logger.log(Level.INFO, "Positions updated!");
