@@ -1,5 +1,6 @@
 package org.core;
 
+import org.apache.commons.lang3.StringUtils;
 import org.core.processors.Processor;
 
 import javax.swing.*;
@@ -25,14 +26,14 @@ public class MainFrame extends JFrame {
         add(new JScrollPane(outputArea), BorderLayout.CENTER);
 
         processor = new Processor();
+        processor.start(outputArea);
         inputField = new JTextField();
         inputField.addActionListener(e -> {
             String input = inputField.getText();
-            inputField.setText("Input wallet name and address using the format: <wallet_name>:<wallet_address>\n");
             processor.handleWalletAddressInput(outputArea, input);
+            inputField.setText(StringUtils.EMPTY);
         });
         add(inputField, BorderLayout.SOUTH);
-        processor.start(outputArea);
     }
 
 

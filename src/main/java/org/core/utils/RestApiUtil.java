@@ -46,8 +46,7 @@ public class RestApiUtil {
             props.load(input);
         }
 
-
-        return props.getProperty("db.password");
+        return props.getProperty("helius.apiKey");
     }
 
     public static JSONObject getTokenMetadataFromHelius(String mintAddress) throws JsonProcessingException {

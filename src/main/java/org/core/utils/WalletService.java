@@ -113,19 +113,23 @@ public class WalletService {
             // Filter accounts whose balance is 0
             if (tokenAccount.amount() == 0) continue;
 
-            CompletableFuture<Void> future = fetchTokenDetails(tokenMintAddress, processedTokens, wallet, tokenAccount);
+            boolean tokenExistsinMap = m_tokenMap.containsKey(tokenMintAddress);
 
-            try {
-                if (processedTokens % 6 == 0) {
-                    Thread.sleep(3000); //sleep for 2s to manage rate limits (10 rqs)
-                    logger.log(Level.INFO, "Sleeping for 2s... token #" + processedTokens);
+            CompletableFuture<Void> future = fetchTokenDetails(tokenMintAddress, processedTokens, wallet, tokenAccount, tokenExistsinMap);
+
+            if (!tokenExistsinMap) {
+                try {
+                    if (processedTokens % 6 == 0) {
+                        Thread.sleep(3000); //sleep for 2s to manage rate limits (10 rqs)
+                        logger.log(Level.INFO, "Sleeping for 2s... token #" + processedTokens);
+                    }
+                } catch (InterruptedException e) {
+                    logger.log(Level.SEVERE, "Thread interrupted while processing token #" + processedTokens + " : " + e.getMessage());
                 }
-            } catch (InterruptedException e) {
-                logger.log(Level.SEVERE, "Thread interrupted while processing token #" + processedTokens + " : " + e.getMessage());
+                processedTokens++;
             }
 
             futures.add(future);
-            processedTokens++;
         }
 
         // Wait for all futures to complete
@@ -137,9 +141,7 @@ public class WalletService {
     }
 
     private CompletableFuture<Void> fetchTokenDetails(String tokenMintAddress, Integer processedTokens, Wallet wallet,
-                                                      TokenAccount tokenAccount) {
-
-        boolean tokenExistsinMap = m_tokenMap.containsKey(tokenMintAddress);
+                                                      TokenAccount tokenAccount, boolean tokenExistsinMap) {
 
         if (!tokenExistsinMap) {
             logger.log(Level.INFO, "Fetching Metadata for Token #" + processedTokens + ": " + tokenMintAddress);

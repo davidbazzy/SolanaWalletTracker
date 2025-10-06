@@ -112,7 +112,7 @@ public class DatabaseConnUtil {
 
     public static Set<Pair<String,String>> loadWalletsFromDb(Connection connection) {
         HashSet<Pair<String,String>> wallets = new HashSet<>();
-        String sql = "SELECT * FROM wallets";
+        String sql = "SELECT * FROM wallet";
 
         try (Statement statement = connection.createStatement(); ResultSet resultSet = statement.executeQuery(sql)) {
             while (resultSet.next()) {
