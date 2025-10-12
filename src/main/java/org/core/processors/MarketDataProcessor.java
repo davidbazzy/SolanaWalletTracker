@@ -45,8 +45,8 @@ public class MarketDataProcessor {
             logger.log(Level.INFO, "Fetching market data for token batch: " + (i + 1) + " of " + tokenIdArray.length);
             JSONObject data = RestApiUtil.getMarketDataForTokens(m_httpClient, tokenIdArray[i]);
 
-            if (data == null) {
-                logger.log(Level.WARNING, "Failed to fetch market data as data from Jupiter API is null");
+            if (data.isEmpty()) {
+                logger.log(Level.WARNING, "Market Data response for last set of tokens is empty");
                 return;
             }
 
@@ -61,7 +61,7 @@ public class MarketDataProcessor {
                 if (data.has(tokenMintAddress)) {
                     if(data.isNull(tokenMintAddress)){
                         if (!tokensWithNoMktData.contains(tokenMintAddress)) {
-                            // TODO: Tokens without a price from Jupiter are most likely spam coins. Create a blacklist table for these tokens in db
+                            // TODO: Tokens without a price from Jupiter are most likely spam coins. Create a blacklist table for these tokens in db (Need to diff between good tokens not havent mkt data on a rate occassion)
                             logger.log(Level.WARNING, "Token price data is null for tokenMintAddress: " + tokenMintAddress);
                             tokensWithNoMktData.add(tokenMintAddress);
                         }
@@ -70,7 +70,7 @@ public class MarketDataProcessor {
 
                     JSONObject tokenData = data.getJSONObject(tokenMintAddress);
 
-                    double price = tokenData.getDouble("price");
+                    double price = tokenData.getDouble("usdPrice");
                     MarketData existingMarketData = token.getMarketData();
 
                     // Check if market data already exists for token
@@ -79,6 +79,11 @@ public class MarketDataProcessor {
                     } else {
                         MarketData marketData = new MarketData(tokenMintAddress, price);
                         token.setMarketData(marketData);
+                    }
+                } else {
+                    if (!tokensWithNoMktData.contains(tokenMintAddress)) {
+                        logger.log(Level.WARNING, "No market data response found for token: " + tokenMintAddress);
+                        tokensWithNoMktData.add(tokenMintAddress);
                     }
                 }
             }

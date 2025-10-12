@@ -30,6 +30,7 @@ public class MainFrame extends JFrame {
         inputField = new JTextField();
         inputField.addActionListener(e -> {
             String input = inputField.getText();
+            outputArea.setText(StringUtils.EMPTY);
             processor.handleWalletAddressInput(outputArea, input);
             inputField.setText(StringUtils.EMPTY);
         });
