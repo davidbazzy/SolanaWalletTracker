@@ -15,7 +15,7 @@ public class ValidationUtil {
     // TODO: Need to rewrite to cater for wallet 'name' label
     public static Pair<String,String> extractNameAndAddress(String address) {
         String[] arr = address.split(":"); // Split by space due to 'address name' format
-        if (arr.length != 2 && arr[1].length() != 43 && arr[1].length() != 44) {
+        if (arr.length != 2 || (arr[1].length() != 43 && arr[1].length() != 44)) {
             logger.log(Level.WARNING, "Address length is not 44/45 characters OR address/name hasn't been entered");
             return null;
         }

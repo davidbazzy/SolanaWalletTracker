@@ -123,37 +123,46 @@ public class UserInterfaceDisplayUtil {
 
     }
 
-    public static void displayWalletHoldingsToDelete(JTextArea outputArea, Map<String, Wallet> wallets) {
+    public static void displayWalletHoldingsCmd(JTextArea outputArea, Map<String, Wallet> wallets) {
         if (wallets.isEmpty()) {
             outputArea.append("No wallets to display\n");
             return;
         }
 
         for (Wallet wallet : wallets.values()) {
+            int tokensWithNoMktData = 0;
+            int tokensFilteredByBalance = 0;
             outputArea.append("*****************************************************************************************" + s_newLine);
-            outputArea.append("\uD83D\uDCBC Wallet Address: " + wallet.getAddress() + s_newLine);
+            outputArea.append(String.format("\uD83D\uDCBC Wallet Name and Address: %s - %s \n", wallet.getName(), wallet.getAddress()));
             outputArea.append("Wallet SOL Balance: " + wallet.getSolBalance() + s_newLine);
-            //outputArea.append("SOl Balance in USD: " + wallet.getUsdBalance() + s_newLine);
             outputArea.append("Tokens: " + s_newLine);
             for (Position position : wallet.getPositions().values()) {
-                outputArea.append("--------------------" + s_newLine);
+                if (position.getToken().getMarketData() == null){
+                    tokensWithNoMktData++;
+                    continue;
+                } else if (position.getUsdBalance() < 100) {
+                    tokensFilteredByBalance++;
+                    continue;
+                }
                 outputArea.append(String.format("     Token Name: %s\n", position.getToken().getName()));
                 outputArea.append(String.format("     Token Ticker: %s\n", position.getToken().getTicker()));
                 outputArea.append(String.format("     Token Mint Address: %s\n", position.getToken().getMintAddress()));
                 outputArea.append(String.format("     Token Balance: %s\n", position.getTokenBalance()));
-                if (position.getToken().getMarketData() == null){
-                    outputArea.append("     Token USD Price: N/A\n");
-                    outputArea.append("     Token USD Value: N/A\n");
-                } else {
-                    outputArea.append(String.format("     Token USD Price: %f\n", position.getToken().getMarketData().getUsdPrice()));
-                    outputArea.append(String.format("     Token USD Value: %f\n", position.getUsdBalance()));
-                }
+                outputArea.append(String.format("     Token USD Price: %f\n", position.getToken().getMarketData().getUsdPrice()));
+                outputArea.append(String.format("     Token USD Value: %f\n", position.getUsdBalance()));
+                outputArea.append("--------------------" + s_newLine);
             }
             outputArea.append("*****************************************************************************************" + s_newLine);
+
+            outputArea.append(String.format("# of positions with value less than $100: %d\n", tokensFilteredByBalance));
+            outputArea.append(String.format("# of tokens with no mkt data: %d\n", tokensWithNoMktData));
         }
 
     }
 
+    /**
+     *  Exclude tokens from display where sum of positions across wallets for token is below 10k
+     */
     private static void filterPositionsByBalance(Map<String, List<Position>> tokenToPositionsMapping) {
         Iterator<Map.Entry<String, List<Position>>> iterator = tokenToPositionsMapping.entrySet().iterator();
 

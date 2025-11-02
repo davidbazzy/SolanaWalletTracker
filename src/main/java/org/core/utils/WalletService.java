@@ -60,6 +60,8 @@ public class WalletService {
         String walletAddress = walletAddressAndLabel.getRight();
         String walletName = walletAddressAndLabel.getLeft();
 
+        logger.log(Level.INFO, "Fetching wallet details for: " + walletName);
+
         if (m_wallets.containsKey(walletAddress)) { // TODO: Will need to consider cases where a token has been sold from a wallet
             wallet = m_wallets.get(walletAddress);
             DatabaseConnUtil.persistWalletToDb(m_dbConnection, wallet); // Updates existing sol balance in db for wallet
@@ -82,7 +84,8 @@ public class WalletService {
         outputArea.append(String.format("✅ Wallet contents for %s retrieved successfully \n", walletAddress));
 
         if (wallet != null) {
-            outputArea.append(String.format("🔃 Active positions: %s \n", wallet.getPositions().size()));
+            logger.log(Level.INFO, String.format("✅ Wallet contents for %s retrieved successfully \n", walletAddress));
+            outputArea.append(String.format("🔃 Number of active positions: %s \n", wallet.getPositions().size()));
         }
     }
 
@@ -104,7 +107,8 @@ public class WalletService {
 
         //Log time taken to parse through all token accounts for a given wallet
         long startTime = System.nanoTime();
-        int processedTokens = 1;
+        int dbFetchedTokens = 0;
+        int heliusFetchedTokens = 0;
 
         for (AccountInfo<TokenAccount> accountInfo : accountInfoList) {
             TokenAccount tokenAccount = accountInfo.data();
@@ -115,41 +119,44 @@ public class WalletService {
 
             boolean tokenExistsinMap = m_tokenMap.containsKey(tokenMintAddress);
 
-            CompletableFuture<Void> future = fetchTokenDetails(tokenMintAddress, processedTokens, wallet, tokenAccount, tokenExistsinMap);
-
             if (!tokenExistsinMap) {
+                heliusFetchedTokens++;
+                logger.log(Level.INFO, String.format("Fetching Metadata for Token #%d: %s from Helius", heliusFetchedTokens + dbFetchedTokens, tokenMintAddress));
+
                 try {
-                    if (processedTokens % 6 == 0) {
-                        Thread.sleep(3000); //sleep for 2s to manage rate limits (10 rqs)
-                        logger.log(Level.INFO, "Sleeping for 2s... token #" + processedTokens);
+                    if (heliusFetchedTokens % 6 == 0) {
+                        Thread.sleep(3000); //sleep for 3s to manage rate limits (10 rqs)
+                        logger.log(Level.INFO, "Sleeping for 2s... token #" + heliusFetchedTokens);
                     }
                 } catch (InterruptedException e) {
-                    logger.log(Level.SEVERE, "Thread interrupted while processing token #" + processedTokens + " : " + e.getMessage());
+                    logger.log(Level.SEVERE, "Thread interrupted while processing token #" + heliusFetchedTokens + " : " + e.getMessage());
                 }
-                processedTokens++;
+            } else {
+                dbFetchedTokens++;
+                logger.log(Level.INFO, String.format("Fetching Metadata for Token #%d: %s loaded from DB", dbFetchedTokens + heliusFetchedTokens, tokenMintAddress));
             }
 
+            CompletableFuture<Void> future = fetchTokenDetails(tokenMintAddress, wallet, tokenAccount, tokenExistsinMap);
             futures.add(future);
         }
 
-        // Wait for all futures to complete
-        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+        if (!futures.isEmpty()) {
+            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+            logger.log(Level.INFO, "Completed fetching token details using futures for wallet: " + wallet.getName());
+        } else {
+            logger.log(Level.SEVERE, String.format("Futures call to fetch token details is empty for wallet: %s. Something has gone wrong while processing tokens", wallet.getName()));
+        }
 
         long endTime = System.nanoTime();
         double duration = (double) (endTime - startTime) / 1000000000; // Duration in seconds
-        logger.log(Level.INFO,String.format( "ParseTokenAccounts() execution time for wallet %s & %d tokens: %f seconds", wallet.getAddress(), processedTokens, duration));
+        logger.log(Level.INFO,String.format( "ParseTokenAccounts() execution time for wallet %s & %d tokens: %f seconds", wallet.getAddress(), dbFetchedTokens + heliusFetchedTokens, duration));
     }
 
-    private CompletableFuture<Void> fetchTokenDetails(String tokenMintAddress, Integer processedTokens, Wallet wallet,
+    private CompletableFuture<Void> fetchTokenDetails(String tokenMintAddress, Wallet wallet,
                                                       TokenAccount tokenAccount, boolean tokenExistsinMap) {
 
-        if (!tokenExistsinMap) {
-            logger.log(Level.INFO, "Fetching Metadata for Token #" + processedTokens + ": " + tokenMintAddress);
-        } else {
-            logger.log(Level.INFO, "Fetching Metadata for Token #" + processedTokens + " loaded from DB: " + tokenMintAddress);
-        }
-
-        // Asynchronously fetch token details
+        // Asynchronously fetch token details - runAsync executes the thread straight away
+        // TODO: Run the future below on a custom pool - TBD
         CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
             Token token;
             if (tokenExistsinMap) {

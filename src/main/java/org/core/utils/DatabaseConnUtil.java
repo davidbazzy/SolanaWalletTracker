@@ -5,12 +5,10 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.core.accounts.Token;
 import org.core.accounts.Wallet;
 
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.sql.*;
 import java.util.HashSet;
-import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -32,10 +30,9 @@ public class DatabaseConnUtil {
     public static Connection initiateDbConnection() {
         String jdbcUrl = "jdbc:postgresql://localhost:5432/postgres";
         String username = "postgres";
-        String password = "";
 
         try {
-            password = getDbPassword();
+            String password = getDbPassword();
             return DriverManager.getConnection(jdbcUrl, username, password);
         } catch (SQLException e) {
             logger.log(Level.SEVERE, "Failed to connect to the database", e);
@@ -49,7 +46,7 @@ public class DatabaseConnUtil {
     public static void persistTokenToDb(Connection connection, Token token) {
 
         if (token == null || "Unknown Token".equals(token.getName())) {
-            System.out.println("Token is null or has an unknown name. Skipping persistence.");
+            logger.log(Level.WARNING, "Token %s is null or has an unknown name. Skipping persistence.");
             return;
         }
 
@@ -91,9 +88,9 @@ public class DatabaseConnUtil {
     // and upon every start up, active positions for these wallets
     public static void persistPositionToDb(Connection connection, String walletAddress, String positionAccountAddress, String tokenMintAddress, String tokenTicker, double balance) {
         String sql = """
-                       INSERT INTO position (wallet_address, position_account_address, token_mint_address, 
-                       token_ticker, token_balance, date_added, date_updated) 
-                       VALUES (?, ?, ?, ?, ?, ?, ?) 
+                       INSERT INTO position (wallet_address, position_account_address, token_mint_address,
+                       token_ticker, token_balance, date_added, date_updated)
+                       VALUES (?, ?, ?, ?, ?, ?, ?)
                 """;
 
         try (PreparedStatement stmt = connection.prepareStatement(sql)) {

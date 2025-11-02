@@ -20,7 +20,7 @@ public class MarketDataProcessor {
 
     private final HttpClient m_httpClient;
 
-    private final ConcurrentHashMap<String, Token> m_sessionTokenMap;
+    private final ConcurrentHashMap<String, Token> m_sessionTokenMap; // TODO: Find a way to ignore spam tokens (will need to create a table for these?)
 
     private final Set<String> tokensWithNoMktData = new HashSet<>();
 
