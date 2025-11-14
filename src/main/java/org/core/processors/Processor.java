@@ -59,7 +59,7 @@ public class Processor {
         final HttpClient httpClient = HttpClient.newHttpClient();
         final ConcurrentHashMap<String, Token> sessionTokenMap = new ConcurrentHashMap<>();
         m_marketDataProcessor = new MarketDataProcessor(httpClient, sessionTokenMap);
-        m_dbConnection = DatabaseConnUtil.initiateDbConnection();
+        m_dbConnection = DatabaseConnUtil.getInstance().getDbConnection();
         SolanaRpcClient solanaRpc = SolanaRpcClient.createClient(SolanaNetwork.MAIN_NET.getEndpoint(), httpClient);
         m_walletService = new WalletService(solanaRpc, m_wallets, m_tokenMap, sessionTokenMap, m_dbConnection);
         m_scheduler = Executors.newScheduledThreadPool(2);

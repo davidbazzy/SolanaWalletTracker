@@ -19,7 +19,25 @@ public class DatabaseConnUtil {
 
     private static final Logger logger = Logger.getLogger(DatabaseConnUtil.class.getName());
 
-    public static String getDbPassword() throws IOException {
+    private final Connection m_dbConnection;
+
+    private DatabaseConnUtil() {
+        m_dbConnection = initiateDbConnection();
+    }
+
+    private static class SingletonHolder {
+        private static final DatabaseConnUtil INSTANCE = new DatabaseConnUtil();
+    }
+
+    public static DatabaseConnUtil getInstance() {
+        return SingletonHolder.INSTANCE;
+    }
+
+    public Connection getDbConnection() {
+        return m_dbConnection;
+    }
+
+    private static String getDbPassword() throws IOException {
         Properties props = new Properties();
         try (InputStream input = DatabaseConnUtil.class.getClassLoader().getResourceAsStream("secrets.properties")) {
             props.load(input);
@@ -27,7 +45,7 @@ public class DatabaseConnUtil {
         return props.getProperty("db.password");
     }
 
-    public static Connection initiateDbConnection() {
+    private static Connection initiateDbConnection() {
         String jdbcUrl = "jdbc:postgresql://localhost:5432/postgres";
         String username = "postgres";
 
@@ -119,7 +137,7 @@ public class DatabaseConnUtil {
                 wallets.add(walletDetails);
             }
         } catch (SQLException e) {
-            e.printStackTrace();
+            logger.log(Level.INFO, "Error loading wallet from database");
         }
 
         return wallets;
@@ -143,7 +161,7 @@ public class DatabaseConnUtil {
 
             logger.log(Level.INFO, "Tokens loaded from database: " + tokensMap.size());
         } catch (SQLException e) {
-            e.printStackTrace();
+            logger.log(Level.INFO, "Error loading tokens from database: " + tokensMap.size());
         }
     }
 }

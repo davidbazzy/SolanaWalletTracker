@@ -1,11 +1,11 @@
 package org.core.accounts;
 
 public class Position {
-    String walletAddress;
-    String accountAddress;
-    Token token;
-    double tokenBalance; // balance in native ccy
-    double usdBalance; // balance in USD
+    private final String walletAddress;
+    private final String accountAddress;
+    private final Token token;
+    private double tokenBalance; // balance in native ccy
+    private double usdBalance; // balance in USD
 
     public Position(String walletAddress, String accountAddress, Token token, double lamports) {
         this.walletAddress = walletAddress;
