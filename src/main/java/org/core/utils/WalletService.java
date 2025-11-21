@@ -156,7 +156,7 @@ public class WalletService {
                                                       TokenAccount tokenAccount, boolean tokenExistsinMap) {
 
         // Asynchronously fetch token details - runAsync executes the thread straight away
-        // TODO: Run the future below on a custom pool - TBD
+        // TODO: Create Virtual Threads instead given I/O operations
         CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
             Token token;
             if (tokenExistsinMap) {

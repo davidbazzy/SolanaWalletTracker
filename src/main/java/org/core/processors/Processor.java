@@ -51,9 +51,9 @@ public class Processor {
     private CompletableFuture<Void> m_walletsLoadFuture;
 
     // Timing constants
-    private static final long MARKET_DATA_INTERVAL_SECONDS = 15L;
-    private static final long POSITION_UPDATE_INTERVAL_SECONDS = 15L;
-    private static final long WALLET_API_RATE_LIMIT_SECONDS = 4L;
+    private static final int MARKET_DATA_INTERVAL_SECONDS = 15;
+    private static final int POSITION_UPDATE_INTERVAL_SECONDS = 15;
+    private static final int WALLET_API_RATE_LIMIT_SECONDS = 5;
 
     public Processor() {
         final HttpClient httpClient = HttpClient.newHttpClient();
@@ -184,8 +184,8 @@ public class Processor {
                 }
 
                 try {
-                    Thread.sleep(WALLET_API_RATE_LIMIT_SECONDS);
                     logger.log(Level.INFO, "Sleeping for " + WALLET_API_RATE_LIMIT_SECONDS + "s due to sava API rate limits...");
+                    Thread.sleep(WALLET_API_RATE_LIMIT_SECONDS * 1000L);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     logger.log(Level.WARNING, "Wallet loading thread interrupted while sleeping", e);
