@@ -18,9 +18,7 @@ import javax.swing.*;
 import java.sql.Connection;
 import java.util.*;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutionException;
+import java.util.concurrent.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -28,22 +26,21 @@ import java.util.logging.Logger;
 public class WalletService {
 
     private final SolanaRpcClient m_solanaRpc;
-
     private final Map<String, Wallet> m_wallets;
-
     private final ConcurrentHashMap<String, Token> m_tokenMap;
-
     private final ConcurrentHashMap<String, Token> m_sessionTokenMap;
-
     private final Connection m_dbConnection;
 
     private static final Logger logger = Logger.getLogger(WalletService.class.getName());
-
     private static final PublicKey s_Token_Program_Public_Key = PublicKey.fromBase58Encoded("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
-
     private static final String s_unknownToken = "Unknown Token";
-
     private static final String s_unknownSymbol = "Unknown Symbol";
+
+    // Virtual thread executor for fetching tokens
+    private final ExecutorService m_virtualTokenThreadExecutor;
+
+    // Rate limiter to manage Helius API rate limits + non-blocking on main thread
+    private final Semaphore m_heliusRateLimiter;
 
     public WalletService(SolanaRpcClient solanaRpc, Map<String, Wallet> wallets, ConcurrentHashMap<String, Token> tokenMap,
                          ConcurrentHashMap<String, Token> sessionTokenMap, Connection dbConnection) {
@@ -52,6 +49,8 @@ public class WalletService {
         m_tokenMap = tokenMap;
         m_dbConnection = dbConnection;
         m_sessionTokenMap = sessionTokenMap;
+        m_virtualTokenThreadExecutor = Executors.newVirtualThreadPerTaskExecutor();
+        m_heliusRateLimiter = new Semaphore(5);
     }
 
     public void processWalletForCmd(JTextArea outputArea, Pair<String, String> walletAddressAndLabel) {
@@ -122,22 +121,12 @@ public class WalletService {
             if (!tokenExistsinMap) {
                 heliusFetchedTokens++;
                 logger.log(Level.INFO, String.format("Fetching Metadata for Token #%d: %s from Helius", heliusFetchedTokens + dbFetchedTokens, tokenMintAddress));
-
-                try {
-                    if (heliusFetchedTokens % 6 == 0) {
-                        Thread.sleep(3000); //sleep for 3s to manage rate limits (10 rqs)
-                        logger.log(Level.INFO, "Sleeping for 2s... token #" + heliusFetchedTokens);
-                    }
-                } catch (InterruptedException e) {
-                    logger.log(Level.SEVERE, "Thread interrupted while processing token #" + heliusFetchedTokens + " : " + e.getMessage());
-                }
             } else {
                 dbFetchedTokens++;
                 logger.log(Level.INFO, String.format("Fetching Metadata for Token #%d: %s loaded from DB", dbFetchedTokens + heliusFetchedTokens, tokenMintAddress));
             }
 
-            CompletableFuture<Void> future = fetchTokenDetails(tokenMintAddress, wallet, tokenAccount, tokenExistsinMap);
-            futures.add(future);
+            futures.add(fetchTokenDetails(tokenMintAddress, wallet, tokenAccount, tokenExistsinMap));
         }
 
         if (!futures.isEmpty()) {
@@ -152,32 +141,52 @@ public class WalletService {
         logger.log(Level.INFO,String.format( "ParseTokenAccounts() execution time for wallet %s & %d tokens: %f seconds", wallet.getAddress(), dbFetchedTokens + heliusFetchedTokens, duration));
     }
 
+    /**
+     * Fetch token details asynchronously using Completable Futures and virtual threads.
+     * Use of virtual threads due to less memory overhead vs threads + token calls are I/O bound operations
+     */
     private CompletableFuture<Void> fetchTokenDetails(String tokenMintAddress, Wallet wallet,
                                                       TokenAccount tokenAccount, boolean tokenExistsinMap) {
 
-        // Asynchronously fetch token details - runAsync executes the thread straight away
-        // TODO: Create Virtual Threads instead given I/O operations
-        CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
-            Token token;
-            if (tokenExistsinMap) {
-                token = m_tokenMap.get(tokenMintAddress);
-            } else {
-                // Query Helius API for token & persist to DB
-                token = createTokenUsingHelius(tokenMintAddress);
-                DatabaseConnUtil.persistTokenToDb(m_dbConnection, token);
-                m_tokenMap.put(tokenMintAddress, token);
+        // Asynchronously fetch token details - runAsync uses the configured executor (virtual threads when available)
+        return CompletableFuture.runAsync(() -> {
+            try {
+                Token token;
+                if (tokenExistsinMap) {
+                    token = m_tokenMap.get(tokenMintAddress);
+                } else {
+                    // Fetch token detail from Helius API - acquire rate limit permit
+                    m_heliusRateLimiter.acquire();
+                    try {
+                        // Query Helius API for token & persist to DB
+                        token = createTokenUsingHelius(tokenMintAddress);
+                        DatabaseConnUtil.persistTokenToDb(m_dbConnection, token);
+                        m_tokenMap.put(tokenMintAddress, token);
+
+                        // Add small delay to respect rate limits (adjustable)
+                        Thread.sleep(200); // 200ms = ~5 requests/second
+                    } finally {
+                        // Always release the permit
+                        m_heliusRateLimiter.release();
+                    }
+                }
+
+                m_sessionTokenMap.put(tokenMintAddress, token);
+                double balance = tokenAccount.amount() / Math.pow(10, token.getDecimals());
+                Position position = new Position(wallet.getAddress(), tokenAccount.address().toBase58(), token, balance);
+
+                // TODO: TO BE REVIEWED, do we want to store position in db?
+                //DatabaseConnUtil.persistPositionToDb(dbConn, wallet.getAddress(), position.getAccountAddress(), tokenMintAddress, token.getTicker(), balance);
+                wallet.addPosition(position);
+
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                logger.log(Level.SEVERE, "Thread interrupted while processing token: " + tokenMintAddress, e);
+            } catch (Exception e) {
+                logger.log(Level.SEVERE, "Error processing token: " + tokenMintAddress, e);
             }
 
-            m_sessionTokenMap.put(tokenMintAddress, token);
-            double balance = tokenAccount.amount() / Math.pow(10, token.getDecimals());
-            Position position = new Position(wallet.getAddress(), tokenAccount.address().toBase58(), token, balance);
-
-            // TODO: TO BE REVIEWED, do we want to store position in db?
-            //DatabaseConnUtil.persistPositionToDb(dbConn, wallet.getAddress(), position.getAccountAddress(), tokenMintAddress, token.getTicker(), balance);
-            wallet.addPosition(position);
-        });
-
-        return future;
+        }, m_virtualTokenThreadExecutor);
     }
 
     private Token createTokenUsingHelius(String tokenMintAddress) {
@@ -267,6 +276,24 @@ public class WalletService {
 
         return accountList;
 
+    }
+
+    /**
+     * Shutdown the executor when the service is no longer needed
+     * Call this when your application is shutting down
+     */
+    public void shutdown() {
+        logger.log(Level.INFO, "Shutting down WalletService virtual thread executor...");
+        m_virtualTokenThreadExecutor.shutdown();
+        try {
+            if (!m_virtualTokenThreadExecutor.awaitTermination(30, TimeUnit.SECONDS)) {
+                m_virtualTokenThreadExecutor.shutdownNow();
+                logger.log(Level.WARNING, "Executor did not terminate in time, forced shutdown");
+            }
+        } catch (InterruptedException e) {
+            m_virtualTokenThreadExecutor.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
     }
 
     // TODO: To be used once I switch from cmd to JavaFX

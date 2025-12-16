@@ -24,27 +24,18 @@ public class Processor {
 
     private static final Logger logger = Logger.getLogger(Processor.class.getName());
 
-    private final WalletService m_walletService;
-
-    // Contains all tokens loaded from db
-    private final ConcurrentHashMap<String, Token> m_tokenMap = new ConcurrentHashMap<>();
-
+    // In-memory wallet map (DB stored + fetched wallets onchain)
     private final ConcurrentHashMap<String, Wallet> m_wallets = new ConcurrentHashMap<>();
 
-    private static final String m_systemExit = "0";
+    // In-memory token map (includes db stored tokens + api fetched tokens)
+    private final ConcurrentHashMap<String, Token> m_tokenMap = new ConcurrentHashMap<>();
 
-    private static final String m_holdings = "h";
-
-    private static final String m_overlappingTokens = "o";
-
+    private final WalletService m_walletService;
     private final Connection m_dbConnection;
-
-    private static final Set<String> m_validCommands = Set.of(m_holdings, m_systemExit, m_overlappingTokens);
-
     private final MarketDataProcessor m_marketDataProcessor;
 
     // Better use over raw threads which are self-managed
-    private final ScheduledExecutorService m_scheduler;
+    private final ScheduledExecutorService m_MarketDataAndPositionScheduler;
 
     // Single-thread executor used for sequential wallet loading (rate-limited)
     private final ExecutorService m_walletLoaderExecutor = Executors.newSingleThreadExecutor();
@@ -55,61 +46,34 @@ public class Processor {
     private static final int POSITION_UPDATE_INTERVAL_SECONDS = 15;
     private static final int WALLET_API_RATE_LIMIT_SECONDS = 5;
 
-    public Processor() {
+    // Action constants
+    private static final String m_systemExit = "0";
+    private static final String m_holdings = "h";
+    private static final String m_overlappingTokens = "o";
+    private static final Set<String> m_validCommands = Set.of(m_holdings, m_systemExit, m_overlappingTokens);
+
+    private Processor() {
         final HttpClient httpClient = HttpClient.newHttpClient();
         final ConcurrentHashMap<String, Token> sessionTokenMap = new ConcurrentHashMap<>();
         m_marketDataProcessor = new MarketDataProcessor(httpClient, sessionTokenMap);
         m_dbConnection = DatabaseConnUtil.getInstance().getDbConnection();
         SolanaRpcClient solanaRpc = SolanaRpcClient.createClient(SolanaNetwork.MAIN_NET.getEndpoint(), httpClient);
         m_walletService = new WalletService(solanaRpc, m_wallets, m_tokenMap, sessionTokenMap, m_dbConnection);
-        m_scheduler = Executors.newScheduledThreadPool(2);
+        m_MarketDataAndPositionScheduler = Executors.newScheduledThreadPool(2);
+    }
+
+    public static class SingletonProcessor {
+        private static final Processor INSTANCE = new Processor();
+    }
+
+    public static Processor getInstance() {
+        return SingletonProcessor.INSTANCE;
     }
 
     public void start(JTextArea outputArea) {
         loadWalletsAndTokensFromDb(outputArea);
         initiateMarketDataThread();
         initiatePositionUpdateThread();
-    }
-
-    public void stop() {
-        // Attempt graceful shutdown of scheduled tasks
-        try {
-            logger.log(Level.INFO, "Shutting down scheduler...");
-            m_scheduler.shutdownNow();
-            if (!m_scheduler.awaitTermination(5, TimeUnit.SECONDS)) {
-                logger.log(Level.WARNING, "Scheduler did not terminate within timeout.");
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            logger.log(Level.WARNING, "Interrupted while shutting down scheduler", e);
-        } catch (Exception e) {
-            logger.log(Level.SEVERE, "Exception while shutting down scheduler", e);
-        }
-
-        // Attempt to stop wallet loader and cancel outstanding future
-        try {
-            if (m_walletsLoadFuture != null) {
-                m_walletsLoadFuture.cancel(true);
-            }
-            m_walletLoaderExecutor.shutdownNow();
-            if (!m_walletLoaderExecutor.awaitTermination(3, TimeUnit.SECONDS)) {
-                logger.log(Level.WARNING, "Wallet loader executor did not terminate within timeout.");
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            logger.log(Level.WARNING, "Interrupted while shutting down wallet loader executor", e);
-        } catch (Exception e) {
-            logger.log(Level.SEVERE, "Exception while shutting down wallet loader executor", e);
-        }
-
-        // Close DB connection
-        try {
-            if (m_dbConnection != null && !m_dbConnection.isClosed()) {
-                m_dbConnection.close();
-            }
-        } catch (SQLException e) {
-            logger.log(Level.SEVERE, "Failed to close DB connection", e);
-        }
     }
 
     public void handleWalletAddressInput(JTextArea outputArea, String input) {
@@ -158,14 +122,34 @@ public class Processor {
         }
     }
 
+    /**
+     * Market data thread defined with a sleep interval to respect Jupiter API limits
+     */
     private void initiateMarketDataThread() {
-        m_scheduler.scheduleAtFixedRate(() -> {
+        m_MarketDataAndPositionScheduler.scheduleAtFixedRate(() -> {
             try {
                 m_marketDataProcessor.processMarketData();
             } catch (Exception e) {
                 logger.log(Level.SEVERE, "Market Data Thread has thrown an Exception", e);
             }
         }, 0, MARKET_DATA_INTERVAL_SECONDS, TimeUnit.SECONDS);
+    }
+
+    // TODO: Position update thread to be applied periodically. Update to make this event driven based on mkt data changes for a given position
+    private void initiatePositionUpdateThread() {
+        m_MarketDataAndPositionScheduler.scheduleAtFixedRate(() -> {
+            try {
+                logger.log(Level.INFO, "Updating positions...");
+                for (Wallet wallet : m_wallets.values()) {
+                    for (Position position : wallet.getPositions().values()) {
+                        m_marketDataProcessor.applyMarketDataToPosition(position);
+                    }
+                }
+                logger.log(Level.INFO, "Positions updated!");
+            } catch (Exception e) {
+                logger.log(Level.SEVERE, "Positions Update Thread has thrown an Exception", e);
+            }
+        }, 0, POSITION_UPDATE_INTERVAL_SECONDS, TimeUnit.SECONDS);
     }
 
     private void loadWalletsAndTokensFromDb(JTextArea outputArea) {
@@ -200,20 +184,47 @@ public class Processor {
         });
     }
 
-    private void initiatePositionUpdateThread() {
-        m_scheduler.scheduleAtFixedRate(() -> {
-            try {
-                logger.log(Level.INFO, "Updating positions...");
-                for (Wallet wallet : m_wallets.values()) {
-                    for (Position position : wallet.getPositions().values()) {
-                        m_marketDataProcessor.applyMarketDataToPosition(position);
-                    }
-                }
-                logger.log(Level.INFO, "Positions updated!");
-            } catch (Exception e) {
-                logger.log(Level.SEVERE, "Positions Update Thread has thrown an Exception", e);
+    private void stop() {
+        // Attempt graceful shutdown of scheduled tasks
+        try {
+            logger.log(Level.INFO, "Shutting down scheduler...");
+            m_MarketDataAndPositionScheduler.shutdownNow();
+            if (!m_MarketDataAndPositionScheduler.awaitTermination(5, TimeUnit.SECONDS)) {
+                logger.log(Level.WARNING, "Scheduler did not terminate within timeout.");
             }
-        }, 0, POSITION_UPDATE_INTERVAL_SECONDS, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            logger.log(Level.WARNING, "Interrupted while shutting down scheduler", e);
+        } catch (Exception e) {
+            logger.log(Level.SEVERE, "Exception while shutting down scheduler", e);
+        }
+
+        // Attempt to stop wallet loader and cancel outstanding future
+        try {
+            if (m_walletsLoadFuture != null) {
+                m_walletsLoadFuture.cancel(true);
+            }
+            m_walletLoaderExecutor.shutdownNow();
+            if (!m_walletLoaderExecutor.awaitTermination(3, TimeUnit.SECONDS)) {
+                logger.log(Level.WARNING, "Wallet loader executor did not terminate within timeout.");
+            }
+
+            m_walletService.shutdown();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            logger.log(Level.WARNING, "Interrupted while shutting down wallet loader and/or thread executor", e);
+        } catch (Exception e) {
+            logger.log(Level.SEVERE, "Exception while shutting down wallet loader and/or thread executor", e);
+        }
+
+        // Close DB connection
+        try {
+            if (m_dbConnection != null && !m_dbConnection.isClosed()) {
+                m_dbConnection.close();
+            }
+        } catch (SQLException e) {
+            logger.log(Level.SEVERE, "Failed to close DB connection", e);
+        }
     }
 
     // Ensure UI appends occur on the Swing EDT
@@ -225,5 +236,4 @@ public class Processor {
         }
     }
 
-    // ...existing code...
 }

@@ -22,7 +22,6 @@ import java.util.logging.Logger;
 public class RestApiUtil {
 
     private static final Logger logger = Logger.getLogger(MarketDataProcessor.class.getName());
-
     private static final String s_jupiterPriceApi = "https://lite-api.jup.ag/price/v3?ids=";
     private static final String s_heliusTokenApi = "https://mainnet.helius-rpc.com/?api-key=";
     private static final String s_getRequest = "GET";

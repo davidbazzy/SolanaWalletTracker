@@ -5,8 +5,6 @@ import org.core.processors.Processor;
 
 import javax.swing.*;
 import java.awt.*;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
 
 public class MainFrame extends JFrame {
 
@@ -25,7 +23,7 @@ public class MainFrame extends JFrame {
         outputArea.setEditable(false);
         add(new JScrollPane(outputArea), BorderLayout.CENTER);
 
-        processor = new Processor();
+        processor = Processor.getInstance();
         processor.start(outputArea);
         inputField = new JTextField();
         inputField.addActionListener(e -> {

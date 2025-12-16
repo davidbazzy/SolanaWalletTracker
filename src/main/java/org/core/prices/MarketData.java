@@ -3,7 +3,6 @@ package org.core.prices;
 public class MarketData {
 
     private final String mintAddress; //address of the mint (CA)
-
     private double usdPrice;
 
     // TODO: To add SOL?

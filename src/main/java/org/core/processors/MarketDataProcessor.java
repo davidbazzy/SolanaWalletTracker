@@ -7,9 +7,7 @@ import org.core.utils.RestApiUtil;
 import org.json.JSONObject;
 
 import java.net.http.HttpClient;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -19,9 +17,7 @@ public class MarketDataProcessor {
     private static final Logger logger = Logger.getLogger(MarketDataProcessor.class.getName());
 
     private final HttpClient m_httpClient;
-
     private final ConcurrentHashMap<String, Token> m_sessionTokenMap; // TODO: Find a way to ignore spam tokens (will need to create a table for these?)
-
     private final Set<String> tokensWithNoMktData = new HashSet<>();
 
     public MarketDataProcessor(HttpClient httpClient, ConcurrentHashMap<String, Token> sessionTokenMap) {
