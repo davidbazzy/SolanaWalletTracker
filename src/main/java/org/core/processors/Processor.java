@@ -17,6 +17,7 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -40,6 +41,10 @@ public class Processor {
     // Single-thread executor used for sequential wallet loading (rate-limited)
     private final ExecutorService m_walletLoaderExecutor = Executors.newSingleThreadExecutor();
     private CompletableFuture<Void> m_walletsLoadFuture;
+
+    // JavaFX callbacks
+    private Runnable m_onWalletsLoaded;
+    private Runnable m_onMarketDataUpdated;
 
     // Timing constants
     private static final int MARKET_DATA_INTERVAL_SECONDS = 15;
@@ -74,6 +79,53 @@ public class Processor {
         loadWalletsAndTokensFromDb(outputArea);
         initiateMarketDataThread();
         initiatePositionUpdateThread();
+    }
+
+    /**
+     * Start the processor with JavaFX callbacks (UI-agnostic version).
+     * @param onWalletsLoaded Callback invoked when wallets are finished loading from DB
+     * @param onMarketDataUpdated Callback invoked when market data is updated
+     */
+    public void startJavaFX(Runnable onWalletsLoaded, Runnable onMarketDataUpdated) {
+        this.m_onWalletsLoaded = onWalletsLoaded;
+        this.m_onMarketDataUpdated = onMarketDataUpdated;
+        loadWalletsAndTokensFromDbJavaFX();
+        initiateMarketDataThreadJavaFX();
+        initiatePositionUpdateThreadJavaFX();
+    }
+
+    /**
+     * Get the map of tracked wallets.
+     */
+    public Map<String, Wallet> getWallets() {
+        return Collections.unmodifiableMap(m_wallets);
+    }
+
+    /**
+     * Get the map of known tokens.
+     */
+    public Map<String, Token> getTokenMap() {
+        return Collections.unmodifiableMap(m_tokenMap);
+    }
+
+    /**
+     * Asynchronously add a wallet and invoke callback when complete.
+     * @param name Wallet name/label
+     * @param address Solana wallet address
+     * @param callback Callback with the created Wallet (or null on failure)
+     */
+    public void addWalletAsync(String name, String address, Consumer<Wallet> callback) {
+        CompletableFuture.runAsync(() -> {
+            try {
+                Pair<String, String> walletPair = Pair.of(name, address);
+                m_walletService.processWalletForJavaFX(walletPair);
+                Wallet wallet = m_wallets.get(address);
+                callback.accept(wallet);
+            } catch (Exception e) {
+                logger.log(Level.SEVERE, "Error adding wallet: " + address, e);
+                callback.accept(null);
+            }
+        }, m_walletLoaderExecutor);
     }
 
     public void handleWalletAddressInput(JTextArea outputArea, String input) {
@@ -152,6 +204,80 @@ public class Processor {
         }, 0, POSITION_UPDATE_INTERVAL_SECONDS, TimeUnit.SECONDS);
     }
 
+    /**
+     * JavaFX version: Market data thread with callback notification
+     */
+    private void initiateMarketDataThreadJavaFX() {
+        m_MarketDataAndPositionScheduler.scheduleAtFixedRate(() -> {
+            try {
+                m_marketDataProcessor.processMarketData();
+            } catch (Exception e) {
+                logger.log(Level.SEVERE, "Market Data Thread has thrown an Exception", e);
+            }
+        }, 0, MARKET_DATA_INTERVAL_SECONDS, TimeUnit.SECONDS);
+    }
+
+    /**
+     * JavaFX version: Position update thread with callback notification
+     */
+    private void initiatePositionUpdateThreadJavaFX() {
+        m_MarketDataAndPositionScheduler.scheduleAtFixedRate(() -> {
+            try {
+                logger.log(Level.INFO, "Updating positions...");
+                for (Wallet wallet : m_wallets.values()) {
+                    for (Position position : wallet.getPositions().values()) {
+                        m_marketDataProcessor.applyMarketDataToPosition(position);
+                    }
+                }
+                logger.log(Level.INFO, "Positions updated!");
+                // Notify JavaFX UI of market data update
+                if (m_onMarketDataUpdated != null) {
+                    m_onMarketDataUpdated.run();
+                }
+            } catch (Exception e) {
+                logger.log(Level.SEVERE, "Positions Update Thread has thrown an Exception", e);
+            }
+        }, 0, POSITION_UPDATE_INTERVAL_SECONDS, TimeUnit.SECONDS);
+    }
+
+    /**
+     * JavaFX version: Load wallets without JTextArea dependency
+     */
+    private void loadWalletsAndTokensFromDbJavaFX() {
+        DatabaseConnUtil.loadTokensFromDb(m_dbConnection, m_tokenMap);
+
+        Set<Pair<String, String>> walletAddresses = DatabaseConnUtil.loadWalletsFromDb(m_dbConnection);
+
+        m_walletsLoadFuture = CompletableFuture.runAsync(() -> {
+            for (Pair<String, String> walletAddress : walletAddresses) {
+                try {
+                    m_walletService.processWalletForJavaFX(walletAddress);
+                } catch (Exception e) {
+                    logger.log(Level.SEVERE, "Exception while processing stored wallet: " + walletAddress, e);
+                }
+
+                try {
+                    logger.log(Level.INFO, "Sleeping for " + WALLET_API_RATE_LIMIT_SECONDS + "s due to sava API rate limits...");
+                    Thread.sleep(WALLET_API_RATE_LIMIT_SECONDS * 1000L);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    logger.log(Level.WARNING, "Wallet loading thread interrupted while sleeping", e);
+                    break;
+                }
+            }
+        }, m_walletLoaderExecutor).whenComplete((v, ex) -> {
+            if (ex != null && !(ex instanceof CancellationException)) {
+                logger.log(Level.SEVERE, "Error while loading wallets", ex);
+            } else {
+                logger.log(Level.INFO, "Finished loading wallets");
+                // Notify JavaFX UI that wallets are loaded
+                if (m_onWalletsLoaded != null) {
+                    m_onWalletsLoaded.run();
+                }
+            }
+        });
+    }
+
     private void loadWalletsAndTokensFromDb(JTextArea outputArea) {
         DatabaseConnUtil.loadTokensFromDb(m_dbConnection, m_tokenMap);
 
@@ -184,7 +310,7 @@ public class Processor {
         });
     }
 
-    private void stop() {
+    public void stop() {
         // Attempt graceful shutdown of scheduled tasks
         try {
             logger.log(Level.INFO, "Shutting down scheduler...");

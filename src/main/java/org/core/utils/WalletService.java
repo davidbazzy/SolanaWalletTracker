@@ -292,28 +292,41 @@ public class WalletService {
         }
     }
 
-    // TODO: To be used once I switch from cmd to JavaFX
-    /*public Wallet processWalletForJavaFx(String walletAddress) {
+    /**
+     * Process wallet for JavaFX UI (no JTextArea dependency).
+     * @param walletAddressAndLabel Pair of wallet name (left) and address (right)
+     */
+    public void processWalletForJavaFX(Pair<String, String> walletAddressAndLabel) {
         Wallet wallet;
 
-        if (m_wallets.containsKey(walletAddress)) { // TODO: Will need to consider cases where a token has been sold from a wallet
+        String walletAddress = walletAddressAndLabel.getRight();
+        String walletName = walletAddressAndLabel.getLeft();
+
+        logger.log(Level.INFO, "Fetching wallet details for: " + walletName);
+
+        if (m_wallets.containsKey(walletAddress)) {
             wallet = m_wallets.get(walletAddress);
-            processWalletTokens(m_solanaRpc, wallet, m_tokenMap, m_dbConnection);
+            DatabaseConnUtil.persistWalletToDb(m_dbConnection, wallet);
+            processWalletTokens(wallet);
         } else {
             PublicKey publicKey = PublicKey.fromBase58Encoded(walletAddress);
             AccountInfo<byte[]> accountInfo = getAccount(m_solanaRpc, publicKey);
 
             if (accountInfo != null) {
-                wallet = new Wallet(walletAddress, "temp name", accountInfo.lamports(), publicKey);
-                processWalletTokens(m_solanaRpc, wallet, m_tokenMap, m_dbConnection);
+                wallet = new Wallet(walletAddress, walletName, accountInfo.lamports(), publicKey);
+                processWalletTokens(wallet);
+                DatabaseConnUtil.persistWalletToDb(m_dbConnection, wallet);
                 m_wallets.put(walletAddress, wallet);
             } else {
                 wallet = null;
-                logger.log(Level.WARNING, "AccountInfo is null for wallet walletInput: " + walletAddress);
+                logger.log(Level.WARNING, "AccountInfo is null for wallet address: " + walletAddress);
             }
         }
 
-        return wallet;
-    }*/
+        if (wallet != null) {
+            logger.log(Level.INFO, String.format("Wallet contents for %s retrieved successfully. Active positions: %d",
+                    walletAddress, wallet.getPositions().size()));
+        }
+    }
 
 }

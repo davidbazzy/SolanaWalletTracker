@@ -1,0 +1,332 @@
+/* Dark Theme CSS for CryptoWalletTracker */
+/* Catppuccin Mocha inspired color palette */
+
+/* Root container */
+.root {
+    -fx-background-color: #1e1e2e;
+    -fx-font-family: "Segoe UI", "Arial", sans-serif;
+    -fx-font-size: 13px;
+}
+
+/* Labels */
+.label {
+    -fx-text-fill: #cdd6f4;
+}
+
+.label-secondary {
+    -fx-text-fill: #a6adc8;
+}
+
+.label-muted {
+    -fx-text-fill: #6c7086;
+}
+
+.title-label {
+    -fx-font-size: 20px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #cdd6f4;
+}
+
+.header-label {
+    -fx-font-size: 16px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #cdd6f4;
+}
+
+/* Buttons */
+.button {
+    -fx-background-color: #45475a;
+    -fx-text-fill: #cdd6f4;
+    -fx-background-radius: 6px;
+    -fx-padding: 8px 16px;
+    -fx-cursor: hand;
+}
+
+.button:hover {
+    -fx-background-color: #585b70;
+}
+
+.button:pressed {
+    -fx-background-color: #313244;
+}
+
+.button-primary {
+    -fx-background-color: #89b4fa;
+    -fx-text-fill: #1e1e2e;
+    -fx-font-weight: bold;
+}
+
+.button-primary:hover {
+    -fx-background-color: #7aa2f7;
+}
+
+.button-success {
+    -fx-background-color: #a6e3a1;
+    -fx-text-fill: #1e1e2e;
+    -fx-font-weight: bold;
+}
+
+.button-success:hover {
+    -fx-background-color: #94d88a;
+}
+
+.button-danger {
+    -fx-background-color: #f38ba8;
+    -fx-text-fill: #1e1e2e;
+    -fx-font-weight: bold;
+}
+
+.button-danger:hover {
+    -fx-background-color: #e67a95;
+}
+
+/* Text Fields */
+.text-field {
+    -fx-background-color: #313244;
+    -fx-text-fill: #cdd6f4;
+    -fx-prompt-text-fill: #6c7086;
+    -fx-background-radius: 6px;
+    -fx-border-color: #585b70;
+    -fx-border-radius: 6px;
+    -fx-padding: 8px 12px;
+}
+
+.text-field:focused {
+    -fx-border-color: #89b4fa;
+}
+
+/* ListView (Wallet Sidebar) */
+.list-view {
+    -fx-background-color: #313244;
+    -fx-background-insets: 0;
+    -fx-padding: 0;
+}
+
+.list-view .list-cell {
+    -fx-background-color: transparent;
+    -fx-text-fill: #cdd6f4;
+    -fx-padding: 10px 12px;
+}
+
+.list-view .list-cell:filled:hover {
+    -fx-background-color: #45475a;
+}
+
+.list-view .list-cell:filled:selected {
+    -fx-background-color: #89b4fa;
+    -fx-text-fill: #1e1e2e;
+}
+
+.list-view .list-cell:filled:selected .label {
+    -fx-text-fill: #1e1e2e;
+}
+
+.list-view .list-cell:filled:selected .label-secondary,
+.list-view .list-cell:filled:selected .wallet-cell-address {
+    -fx-text-fill: #313244;
+}
+
+.list-view .list-cell:filled:selected .wallet-cell-balance {
+    -fx-text-fill: #1e1e2e;
+}
+
+/* TableView */
+.table-view {
+    -fx-background-color: #1e1e2e;
+    -fx-table-cell-border-color: transparent;
+}
+
+.table-view .column-header-background {
+    -fx-background-color: #313244;
+}
+
+.table-view .column-header {
+    -fx-background-color: #313244;
+    -fx-border-color: transparent transparent #585b70 transparent;
+}
+
+.table-view .column-header .label {
+    -fx-text-fill: #a6adc8;
+    -fx-font-weight: bold;
+    -fx-padding: 8px;
+}
+
+.table-view .table-row-cell {
+    -fx-background-color: #1e1e2e;
+    -fx-border-color: transparent;
+}
+
+.table-view .table-row-cell:odd {
+    -fx-background-color: #313244;
+}
+
+.table-view .table-row-cell:hover {
+    -fx-background-color: #45475a;
+}
+
+.table-view .table-row-cell:selected {
+    -fx-background-color: #45475a;
+}
+
+.table-view .table-cell {
+    -fx-text-fill: #cdd6f4;
+    -fx-padding: 8px;
+}
+
+.table-view .placeholder .label {
+    -fx-text-fill: #6c7086;
+}
+
+/* Scroll Bars */
+.scroll-bar {
+    -fx-background-color: #1e1e2e;
+}
+
+.scroll-bar .thumb {
+    -fx-background-color: #45475a;
+    -fx-background-radius: 4px;
+}
+
+.scroll-bar .thumb:hover {
+    -fx-background-color: #585b70;
+}
+
+.scroll-bar .increment-button,
+.scroll-bar .decrement-button {
+    -fx-background-color: transparent;
+    -fx-padding: 0;
+}
+
+.scroll-bar .increment-arrow,
+.scroll-bar .decrement-arrow {
+    -fx-background-color: transparent;
+    -fx-padding: 0;
+    -fx-shape: "";
+}
+
+.scroll-bar .track {
+    -fx-background-color: #313244;
+}
+
+/* Tab Pane */
+.tab-pane {
+    -fx-background-color: #1e1e2e;
+}
+
+.tab-pane .tab-header-area {
+    -fx-background-color: #313244;
+    -fx-padding: 5px 5px 0 5px;
+}
+
+.tab-pane .tab-header-background {
+    -fx-background-color: #313244;
+}
+
+.tab-pane .tab {
+    -fx-background-color: #45475a;
+    -fx-background-radius: 6px 6px 0 0;
+    -fx-padding: 8px 16px;
+}
+
+.tab-pane .tab .tab-label {
+    -fx-text-fill: #a6adc8;
+}
+
+.tab-pane .tab:selected {
+    -fx-background-color: #1e1e2e;
+}
+
+.tab-pane .tab:selected .tab-label {
+    -fx-text-fill: #cdd6f4;
+    -fx-font-weight: bold;
+}
+
+.tab-pane .tab-content-area {
+    -fx-background-color: #1e1e2e;
+}
+
+/* Dialog */
+.dialog-pane {
+    -fx-background-color: #1e1e2e;
+}
+
+.dialog-pane .header-panel {
+    -fx-background-color: #313244;
+}
+
+.dialog-pane .content {
+    -fx-background-color: #1e1e2e;
+}
+
+.dialog-pane .label {
+    -fx-text-fill: #cdd6f4;
+}
+
+/* Progress Indicator */
+.progress-indicator {
+    -fx-progress-color: #89b4fa;
+}
+
+/* Separator */
+.separator .line {
+    -fx-border-color: #585b70;
+}
+
+/* Custom Styles */
+.sidebar {
+    -fx-background-color: #313244;
+    -fx-padding: 10px;
+}
+
+.header-bar {
+    -fx-background-color: #313244;
+    -fx-padding: 15px 20px;
+}
+
+.footer-bar {
+    -fx-background-color: #313244;
+    -fx-padding: 10px 20px;
+}
+
+.card {
+    -fx-background-color: #313244;
+    -fx-background-radius: 8px;
+    -fx-padding: 15px;
+}
+
+.wallet-cell-name {
+    -fx-font-weight: bold;
+    -fx-text-fill: #cdd6f4;
+}
+
+.wallet-cell-address {
+    -fx-font-size: 11px;
+    -fx-text-fill: #6c7086;
+}
+
+.wallet-cell-balance {
+    -fx-font-size: 12px;
+    -fx-text-fill: #a6e3a1;
+}
+
+.value-positive {
+    -fx-text-fill: #a6e3a1;
+}
+
+.value-negative {
+    -fx-text-fill: #f38ba8;
+}
+
+.status-ready {
+    -fx-text-fill: #a6e3a1;
+}
+
+.status-loading {
+    -fx-text-fill: #f9e2af;
+}
+
+.total-value {
+    -fx-font-size: 18px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #a6e3a1;
+}
