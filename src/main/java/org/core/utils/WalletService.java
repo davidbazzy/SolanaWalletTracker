@@ -97,10 +97,6 @@ public class WalletService {
         }
     }
 
-    /**
-     *  Using CompletableFutures to source token details asynchronously as this is much faster than doing this in just one thread (synchronously)
-     *  Execution time for a wallet with 43 tokens was 0.17s (as opposed to 3.6s synchronously)
-     */
     private void parseTokenAccounts(List<AccountInfo<TokenAccount>> accountInfoList, Wallet wallet) {
         List<CompletableFuture<Void>> futures = new ArrayList<>();
 
