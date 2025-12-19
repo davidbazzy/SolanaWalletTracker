@@ -69,7 +69,7 @@ public class MainViewController {
 
     public void initialize() {
         logger.log(Level.INFO, "Initializing MainViewController...");
-        setStatus("Loading wallets...", true);
+        setStatus("Loading all stored wallets...", true);
     }
 
     private BorderPane createLayout() {
@@ -471,14 +471,30 @@ public class MainViewController {
 
     // === Callbacks for Processor ===
 
+    public void onWalletLoaded(Wallet wallet) {
+        Platform.runLater(() -> {
+            // Add wallet if not already present
+            boolean exists = walletList.stream()
+                    .anyMatch(w -> w.getAddress().equals(wallet.getAddress()));
+            if (!exists) {
+                walletList.add(wallet);
+                updateWalletCount();
+                setStatus("Loading all stored wallets... (" + wallet.getName() + ")", true);
+
+                // Select the first wallet when it's added
+                if (walletList.size() == 1) {
+                    walletListView.getSelectionModel().selectFirst();
+                }
+            }
+        });
+    }
+
     public void onWalletsLoaded() {
         Platform.runLater(() -> {
-            walletList.clear();
-            walletList.addAll(processor.getWallets().values());
             updateWalletCount();
             setStatus("Ready", false);
 
-            if (!walletList.isEmpty()) {
+            if (!walletList.isEmpty() && walletListView.getSelectionModel().isEmpty()) {
                 walletListView.getSelectionModel().selectFirst();
             }
         });
@@ -541,6 +557,7 @@ public class MainViewController {
 
         private static final NumberFormat currencyFormat = NumberFormat.getCurrencyInstance(Locale.US);
         private static final NumberFormat numberFormat = NumberFormat.getNumberInstance(Locale.US);
+        private static final java.text.DecimalFormat priceFormat = new java.text.DecimalFormat("$#,##0.0000000");
 
         public PositionRow(Position position) {
             this(position, null);
@@ -556,7 +573,7 @@ public class MainViewController {
             this.usdValueRaw = position.getUsdBalance();
 
             if (token.getMarketData() != null) {
-                this.usdPrice = currencyFormat.format(token.getMarketData().getUsdPrice());
+                this.usdPrice = priceFormat.format(token.getMarketData().getUsdPrice());
                 this.usdValue = currencyFormat.format(position.getUsdBalance());
             } else {
                 this.usdPrice = "N/A";

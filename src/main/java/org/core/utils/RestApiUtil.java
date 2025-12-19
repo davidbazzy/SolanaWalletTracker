@@ -75,7 +75,6 @@ public class RestApiUtil {
     }
 
     public static JSONObject getMarketDataForTokens(HttpClient httpClient, String tokenIds) {
-
         HttpRequest request = getHttpRequest(s_getRequest, s_jupiterPriceApi + tokenIds);
         JSONObject response = sendHttpRequest(httpClient, request);
 

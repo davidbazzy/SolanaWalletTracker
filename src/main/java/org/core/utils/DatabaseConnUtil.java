@@ -12,6 +12,7 @@ import java.util.HashSet;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -61,10 +62,12 @@ public class DatabaseConnUtil {
         return null;
     }
 
-    public static void persistTokenToDb(Connection connection, Token token) {
+    // TODO: Update to use instance version of DB connection?
+    public static void persistTokenToDb(Connection connection, Token token, CopyOnWriteArraySet<String> blacklistedTokens) {
 
-        if (token == null || "Unknown Token".equals(token.getName())) {
-            logger.log(Level.WARNING, "Token %s is null or has an unknown name. Skipping persistence.");
+        if ("Unknown Token".equals(token.getName())) {
+            logger.log(Level.WARNING, String.format("Token %s is null or has an unknown name. Persisting to BlacklistedTokens table.", token.getMintAddress()));
+            persistBlacklistedTokenToDb(connection, token, blacklistedTokens);
             return;
         }
 
@@ -76,6 +79,27 @@ public class DatabaseConnUtil {
             stmt.setString(3, token.getTicker());
             stmt.setInt(4, token.getDecimals());
             stmt.setTimestamp(5, new Timestamp(System.currentTimeMillis()));
+            stmt.executeUpdate();
+        } catch (SQLException e) {
+            logger.log(Level.SEVERE, "Failed to persist token to database", e);
+        }
+    }
+
+    public static void persistBlacklistedTokenToDb(Connection connection, Token token, CopyOnWriteArraySet<String> blacklistedTokens) {
+        logger.log(Level.INFO, String.format("Persisting Token: %s - %s to BlacklistedTokens DB Table", token.getTicker(), token.getMintAddress()));
+
+        if (blacklistedTokens.contains(token.getMintAddress())) {
+            logger.log(Level.INFO, String.format("Token: %s - %s already exists in the BlacklistedTokens DB Table", token.getTicker(), token.getMintAddress()));
+            return;
+        }
+
+        String sql = "INSERT INTO BlacklistedTokens (mint_address, name, ticker, date_added) VALUES (?, ?, ?, ?)";
+
+        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+            stmt.setString(1, token.getMintAddress());
+            stmt.setString(2, token.getName());
+            stmt.setString(3, token.getTicker());
+            stmt.setTimestamp(4, new Timestamp(System.currentTimeMillis()));
             stmt.executeUpdate();
         } catch (SQLException e) {
             logger.log(Level.SEVERE, "Failed to persist token to database", e);
@@ -99,29 +123,6 @@ public class DatabaseConnUtil {
             stmt.executeUpdate();
         } catch (SQLException e) {
             logger.log(Level.SEVERE, "Failed to persist wallet to database", e);
-        }
-    }
-
-    // TODO: Review storing positions in DB... might not be worth it. Might be worth just storing wallet addresses
-    // and upon every start up, active positions for these wallets
-    public static void persistPositionToDb(Connection connection, String walletAddress, String positionAccountAddress, String tokenMintAddress, String tokenTicker, double balance) {
-        String sql = """
-                       INSERT INTO position (wallet_address, position_account_address, token_mint_address,
-                       token_ticker, token_balance, date_added, date_updated)
-                       VALUES (?, ?, ?, ?, ?, ?, ?)
-                """;
-
-        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
-            stmt.setString(1, walletAddress);
-            stmt.setString(2, positionAccountAddress);
-            stmt.setString(3, tokenMintAddress);
-            stmt.setString(4, tokenTicker);
-            stmt.setDouble(5, balance);
-            stmt.setTimestamp(6, new Timestamp(System.currentTimeMillis()));
-            stmt.setTimestamp(7, new Timestamp(System.currentTimeMillis()));
-            stmt.executeUpdate();
-        } catch (SQLException e) {
-            logger.log(Level.SEVERE, "Failed to persist position to database", e);
         }
     }
 
@@ -159,9 +160,25 @@ public class DatabaseConnUtil {
                 tokensMap.put(mintAddress, token);
             }
 
-            logger.log(Level.INFO, "Tokens loaded from database: " + tokensMap.size());
+            logger.log(Level.INFO, String.format("Tokens loaded from database: %d", tokensMap.size()));
         } catch (SQLException e) {
-            logger.log(Level.INFO, "Error loading tokens from database: " + tokensMap.size());
+            logger.log(Level.INFO, "Error loading tokens from database");
         }
     }
+
+    public static void loadBlacklistedTokensFromDb(Connection connection, CopyOnWriteArraySet<String> blacklistedTokens) {
+        String sql = "SELECT * FROM BlacklistedTokens";
+
+        try (Statement statement = connection.createStatement(); ResultSet resultSet = statement.executeQuery(sql)) {
+            while (resultSet.next()) {
+                String mintAddress = resultSet.getString("mint_address");
+                blacklistedTokens.add(mintAddress);
+            }
+
+            logger.log(Level.INFO, String.format("Blacklisted Tokens loaded from database: %d", blacklistedTokens.size()));
+        } catch (SQLException e) {
+            logger.log(Level.INFO, "Error loading blacklisted tokens from database");
+        }
+    }
+
 }

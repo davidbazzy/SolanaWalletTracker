@@ -29,6 +29,7 @@ public class WalletService {
     private final Map<String, Wallet> m_wallets;
     private final ConcurrentHashMap<String, Token> m_tokenMap;
     private final ConcurrentHashMap<String, Token> m_sessionTokenMap;
+    private final CopyOnWriteArraySet<String> m_blacklistedTokens;
     private final Connection m_dbConnection;
 
     private static final Logger logger = Logger.getLogger(WalletService.class.getName());
@@ -43,7 +44,7 @@ public class WalletService {
     private final Semaphore m_heliusRateLimiter;
 
     public WalletService(SolanaRpcClient solanaRpc, Map<String, Wallet> wallets, ConcurrentHashMap<String, Token> tokenMap,
-                         ConcurrentHashMap<String, Token> sessionTokenMap, Connection dbConnection) {
+                         ConcurrentHashMap<String, Token> sessionTokenMap, Connection dbConnection, CopyOnWriteArraySet<String> blacklistedTokens) {
         m_solanaRpc = solanaRpc;
         m_wallets = wallets;
         m_tokenMap = tokenMap;
@@ -51,41 +52,7 @@ public class WalletService {
         m_sessionTokenMap = sessionTokenMap;
         m_virtualTokenThreadExecutor = Executors.newVirtualThreadPerTaskExecutor();
         m_heliusRateLimiter = new Semaphore(5);
-    }
-
-    public void processWalletForCmd(JTextArea outputArea, Pair<String, String> walletAddressAndLabel) {
-        Wallet wallet;
-
-        String walletAddress = walletAddressAndLabel.getRight();
-        String walletName = walletAddressAndLabel.getLeft();
-
-        logger.log(Level.INFO, "Fetching wallet details for: " + walletName);
-
-        if (m_wallets.containsKey(walletAddress)) { // TODO: Will need to consider cases where a token has been sold from a wallet
-            wallet = m_wallets.get(walletAddress);
-            DatabaseConnUtil.persistWalletToDb(m_dbConnection, wallet); // Updates existing sol balance in db for wallet
-            processWalletTokens(wallet);
-        } else {
-            PublicKey publicKey = PublicKey.fromBase58Encoded(walletAddress);
-            AccountInfo<byte[]> accountInfo = getAccount(m_solanaRpc, publicKey);
-
-            if (accountInfo != null) {
-                wallet = new Wallet(walletAddress, walletName, accountInfo.lamports(), publicKey);
-                processWalletTokens(wallet);
-                DatabaseConnUtil.persistWalletToDb(m_dbConnection, wallet);
-                m_wallets.put(walletAddress, wallet);
-            } else {
-                wallet = null;
-                logger.log(Level.WARNING, "AccountInfo is null for wallet address: " + walletAddress);
-            }
-        }
-
-        outputArea.append(String.format("✅ Wallet contents for %s retrieved successfully \n", walletAddress));
-
-        if (wallet != null) {
-            logger.log(Level.INFO, String.format("✅ Wallet contents for %s retrieved successfully \n", walletAddress));
-            outputArea.append(String.format("🔃 Number of active positions: %s \n", wallet.getPositions().size()));
-        }
+        m_blacklistedTokens = blacklistedTokens;
     }
 
     public void processWalletTokens(Wallet wallet) {
@@ -102,7 +69,7 @@ public class WalletService {
 
         //Log time taken to parse through all token accounts for a given wallet
         long startTime = System.nanoTime();
-        int dbFetchedTokens = 0;
+        int mapFetchedTokens = 0;
         int heliusFetchedTokens = 0;
 
         for (AccountInfo<TokenAccount> accountInfo : accountInfoList) {
@@ -116,10 +83,10 @@ public class WalletService {
 
             if (!tokenExistsinMap) {
                 heliusFetchedTokens++;
-                logger.log(Level.INFO, String.format("Fetching Metadata for Token #%d: %s from Helius", heliusFetchedTokens + dbFetchedTokens, tokenMintAddress));
+                logger.log(Level.INFO, String.format("Fetching Metadata for Token #%d: %s from Helius", heliusFetchedTokens + mapFetchedTokens, tokenMintAddress));
             } else {
-                dbFetchedTokens++;
-                logger.log(Level.INFO, String.format("Fetching Metadata for Token #%d: %s loaded from DB", dbFetchedTokens + heliusFetchedTokens, tokenMintAddress));
+                mapFetchedTokens++;
+                logger.log(Level.INFO, String.format("Token #%d: %s exists in Token map", mapFetchedTokens + heliusFetchedTokens, tokenMintAddress));
             }
 
             futures.add(fetchTokenDetails(tokenMintAddress, wallet, tokenAccount, tokenExistsinMap));
@@ -134,7 +101,7 @@ public class WalletService {
 
         long endTime = System.nanoTime();
         double duration = (double) (endTime - startTime) / 1000000000; // Duration in seconds
-        logger.log(Level.INFO,String.format( "ParseTokenAccounts() execution time for wallet %s & %d tokens: %f seconds", wallet.getAddress(), dbFetchedTokens + heliusFetchedTokens, duration));
+        logger.log(Level.INFO,String.format( "ParseTokenAccounts() execution time for wallet %s & %d tokens: %f seconds", wallet.getAddress(), mapFetchedTokens + heliusFetchedTokens, duration));
     }
 
     /**
@@ -156,7 +123,7 @@ public class WalletService {
                     try {
                         // Query Helius API for token & persist to DB
                         token = createTokenUsingHelius(tokenMintAddress);
-                        DatabaseConnUtil.persistTokenToDb(m_dbConnection, token);
+                        DatabaseConnUtil.persistTokenToDb(m_dbConnection, token, m_blacklistedTokens);
                         m_tokenMap.put(tokenMintAddress, token);
 
                         // Add small delay to respect rate limits (adjustable)
@@ -203,6 +170,7 @@ public class WalletService {
         String tokenName;
         String tokenSymbol;
         int tokenDecimals;
+        Token token;
 
         try {
             ObjectMapper mapper = new ObjectMapper();
@@ -227,13 +195,6 @@ public class WalletService {
                     .map(r -> r.tokenInfo)
                     .map(d -> d.decimals)
                     .orElse(0);
-
-            if (s_unknownToken.equals(tokenName)){
-                logger.log(Level.SEVERE, "Unknown Token for mint address: " + tokenMintAddress);
-                logger.log(Level.SEVERE, tokenDetailsHelius.toString());
-            }
-
-            return new Token(tokenMintAddress, tokenName, tokenSymbol, tokenDecimals);
         } catch (JSONException | JsonProcessingException e) {
             logger.log(Level.WARNING, "Error parsing token details: " + e);
             tokenName = s_unknownToken;
@@ -241,7 +202,16 @@ public class WalletService {
             tokenDecimals = 0;
         }
 
-        return new Token(tokenMintAddress, tokenName, tokenSymbol, tokenDecimals);
+        token = new Token(tokenMintAddress, tokenName, tokenSymbol, tokenDecimals);
+
+        if (s_unknownToken.equals(tokenName)){
+            logger.log(Level.WARNING, "Unknown Token for mint address: " + tokenMintAddress);
+            logger.log(Level.WARNING, tokenDetailsHelius.toString());
+
+            DatabaseConnUtil.persistBlacklistedTokenToDb(m_dbConnection, token, m_blacklistedTokens);
+        }
+
+        return token;
     }
 
 

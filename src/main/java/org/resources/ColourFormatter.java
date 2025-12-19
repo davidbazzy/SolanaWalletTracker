@@ -1,5 +1,7 @@
 package org.resources;
 
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.logging.Formatter;
@@ -26,11 +28,22 @@ public class ColourFormatter extends Formatter {
             default -> RESET;
         };
 
-        //return colour + formatMessage(record) + RESET + "\n";
-        return colour + String.format("[%s] [%s] [%s] %s%n",
+        StringBuilder sb = new StringBuilder();
+        sb.append(colour);
+        sb.append(String.format("[%s] [%s] [%s] %s%n",
                 sdf.format(new Date(record.getMillis())), // Timestamp
                 record.getSourceClassName(),              // Class name
                 record.getLevel(),                        // Log level
-                record.getMessage());                     // Log message
+                record.getMessage()));                    // Log message
+
+        // Append stack trace if exception is present
+        if (record.getThrown() != null) {
+            StringWriter sw = new StringWriter();
+            PrintWriter pw = new PrintWriter(sw);
+            record.getThrown().printStackTrace(pw);
+            sb.append(sw);
+        }
+
+        return sb.toString();
     }
 }

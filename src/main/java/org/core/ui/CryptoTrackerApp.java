@@ -7,14 +7,29 @@ import javafx.stage.Stage;
 import org.core.processors.Processor;
 
 import java.util.Objects;
+import java.util.logging.ConsoleHandler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import org.resources.ColourFormatter;
 
 /**
  * Main JavaFX Application for CryptoWalletTracker.
  * Provides a modern dark-themed UI for tracking Solana wallet holdings.
  */
 public class CryptoTrackerApp extends Application {
+
+    static {
+        // Configure logging format before any loggers are used
+        Logger rootLogger = Logger.getLogger("");
+        for (var handler : rootLogger.getHandlers()) {
+            rootLogger.removeHandler(handler);
+        }
+        ConsoleHandler consoleHandler = new ConsoleHandler();
+        consoleHandler.setFormatter(new ColourFormatter());
+        consoleHandler.setLevel(Level.ALL);
+        rootLogger.addHandler(consoleHandler);
+        rootLogger.setLevel(Level.INFO);
+    }
 
     private static final Logger logger = Logger.getLogger(CryptoTrackerApp.class.getName());
     private static final String APP_TITLE = "Crypto Wallet Tracker";
@@ -64,7 +79,11 @@ public class CryptoTrackerApp extends Application {
             // Start the processor after UI is visible
             Platform.runLater(() -> {
                 mainViewController.initialize();
-                processor.startJavaFX(mainViewController::onWalletsLoaded, mainViewController::onMarketDataUpdated);
+                processor.startJavaFX(
+                        mainViewController::onWalletLoaded,
+                        mainViewController::onWalletsLoaded,
+                        mainViewController::onMarketDataUpdated
+                );
             });
 
             logger.log(Level.INFO, "Application started successfully");

@@ -5,13 +5,10 @@ import org.core.accounts.Position;
 import org.core.accounts.Token;
 import org.core.accounts.Wallet;
 import org.core.utils.DatabaseConnUtil;
-import org.core.utils.UserInterfaceDisplayUtil;
-import org.core.utils.ValidationUtil;
 import org.core.utils.WalletService;
 import software.sava.rpc.json.http.SolanaNetwork;
 import software.sava.rpc.json.http.client.SolanaRpcClient;
 
-import javax.swing.*;
 import java.net.http.HttpClient;
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -31,6 +28,9 @@ public class Processor {
     // In-memory token map (includes db stored tokens + api fetched tokens)
     private final ConcurrentHashMap<String, Token> m_tokenMap = new ConcurrentHashMap<>();
 
+    // In-memory copy of blacklisted tokens
+    private final CopyOnWriteArraySet<String> m_blacklistedTokens = new CopyOnWriteArraySet<>();
+
     private final WalletService m_walletService;
     private final Connection m_dbConnection;
     private final MarketDataProcessor m_marketDataProcessor;
@@ -45,25 +45,20 @@ public class Processor {
     // JavaFX callbacks
     private Runnable m_onWalletsLoaded;
     private Runnable m_onMarketDataUpdated;
+    private Consumer<Wallet> m_onWalletLoaded;
 
     // Timing constants
     private static final int MARKET_DATA_INTERVAL_SECONDS = 15;
     private static final int POSITION_UPDATE_INTERVAL_SECONDS = 15;
     private static final int WALLET_API_RATE_LIMIT_SECONDS = 5;
 
-    // Action constants
-    private static final String m_systemExit = "0";
-    private static final String m_holdings = "h";
-    private static final String m_overlappingTokens = "o";
-    private static final Set<String> m_validCommands = Set.of(m_holdings, m_systemExit, m_overlappingTokens);
-
     private Processor() {
         final HttpClient httpClient = HttpClient.newHttpClient();
         final ConcurrentHashMap<String, Token> sessionTokenMap = new ConcurrentHashMap<>();
-        m_marketDataProcessor = new MarketDataProcessor(httpClient, sessionTokenMap);
         m_dbConnection = DatabaseConnUtil.getInstance().getDbConnection();
+        m_marketDataProcessor = new MarketDataProcessor(httpClient,m_dbConnection, sessionTokenMap, m_blacklistedTokens);
         SolanaRpcClient solanaRpc = SolanaRpcClient.createClient(SolanaNetwork.MAIN_NET.getEndpoint(), httpClient);
-        m_walletService = new WalletService(solanaRpc, m_wallets, m_tokenMap, sessionTokenMap, m_dbConnection);
+        m_walletService = new WalletService(solanaRpc, m_wallets, m_tokenMap, sessionTokenMap, m_dbConnection, m_blacklistedTokens);
         m_MarketDataAndPositionScheduler = Executors.newScheduledThreadPool(2);
     }
 
@@ -75,20 +70,17 @@ public class Processor {
         return SingletonProcessor.INSTANCE;
     }
 
-    public void start(JTextArea outputArea) {
-        loadWalletsAndTokensFromDb(outputArea);
-        initiateMarketDataThread();
-        initiatePositionUpdateThread();
-    }
-
     /**
      * Start the processor with JavaFX callbacks (UI-agnostic version).
-     * @param onWalletsLoaded Callback invoked when wallets are finished loading from DB
+     * @param onWalletLoaded Callback invoked each time a wallet is loaded
+     * @param onWalletsLoaded Callback invoked when all wallets are finished loading from DB
      * @param onMarketDataUpdated Callback invoked when market data is updated
      */
-    public void startJavaFX(Runnable onWalletsLoaded, Runnable onMarketDataUpdated) {
+    public void startJavaFX(Consumer<Wallet> onWalletLoaded, Runnable onWalletsLoaded, Runnable onMarketDataUpdated) {
+        this.m_onWalletLoaded = onWalletLoaded;
         this.m_onWalletsLoaded = onWalletsLoaded;
         this.m_onMarketDataUpdated = onMarketDataUpdated;
+        DatabaseConnUtil.loadBlacklistedTokensFromDb(m_dbConnection, m_blacklistedTokens);
         loadWalletsAndTokensFromDbJavaFX();
         initiateMarketDataThreadJavaFX();
         initiatePositionUpdateThreadJavaFX();
@@ -128,82 +120,6 @@ public class Processor {
         }, m_walletLoaderExecutor);
     }
 
-    public void handleWalletAddressInput(JTextArea outputArea, String input) {
-        if (input == null) {
-            appendToOutput(outputArea, "❌ Invalid wallet input format. Please use: <wallet_name>:<wallet_address>\n");
-            return;
-        }
-
-        input = input.trim();
-
-        if (m_validCommands.contains(input)) {
-            // Handle valid commands
-            switch (input) {
-                case m_systemExit:
-                    appendToOutput(outputArea, "Shutting down gracefully\n");
-                    stop();
-                    try {
-                        if (m_dbConnection != null && !m_dbConnection.isClosed()) {
-                            m_dbConnection.close();
-                        }
-                    } catch (SQLException e) {
-                        logger.log(Level.SEVERE, "Error closing DB during shutdown", e);
-                    }
-                    System.exit(0);
-                    break;
-                case m_holdings:
-                    appendToOutput(outputArea, "Displaying holdings\n");
-                    UserInterfaceDisplayUtil.displayWalletHoldingsCmd(outputArea, m_wallets);
-                    break;
-                case m_overlappingTokens:
-                    appendToOutput(outputArea, "Displaying tokens present in more than one wallet\n");
-                    UserInterfaceDisplayUtil.displayCommonTokensAcrossWalletsCmd(outputArea, m_wallets, m_tokenMap);
-                    break;
-                default:
-                    appendToOutput(outputArea, "State valid commands: 0 (exit), h (show holdings), o (overlapping tokens)");
-            }
-        } else {
-            Pair<String, String> walletAddressAndLabel = ValidationUtil.extractNameAndAddress(input);
-
-            if (walletAddressAndLabel != null) {
-                appendToOutput(outputArea, "Setting up wallet... please wait ⏳\n");
-                m_walletService.processWalletForCmd(outputArea, walletAddressAndLabel);
-            } else {
-                appendToOutput(outputArea, "❌ Invalid wallet input format. Please use: <wallet_name>:<wallet_address>\n");
-            }
-        }
-    }
-
-    /**
-     * Market data thread defined with a sleep interval to respect Jupiter API limits
-     */
-    private void initiateMarketDataThread() {
-        m_MarketDataAndPositionScheduler.scheduleAtFixedRate(() -> {
-            try {
-                m_marketDataProcessor.processMarketData();
-            } catch (Exception e) {
-                logger.log(Level.SEVERE, "Market Data Thread has thrown an Exception", e);
-            }
-        }, 0, MARKET_DATA_INTERVAL_SECONDS, TimeUnit.SECONDS);
-    }
-
-    // TODO: Position update thread to be applied periodically. Update to make this event driven based on mkt data changes for a given position
-    private void initiatePositionUpdateThread() {
-        m_MarketDataAndPositionScheduler.scheduleAtFixedRate(() -> {
-            try {
-                logger.log(Level.INFO, "Updating positions...");
-                for (Wallet wallet : m_wallets.values()) {
-                    for (Position position : wallet.getPositions().values()) {
-                        m_marketDataProcessor.applyMarketDataToPosition(position);
-                    }
-                }
-                logger.log(Level.INFO, "Positions updated!");
-            } catch (Exception e) {
-                logger.log(Level.SEVERE, "Positions Update Thread has thrown an Exception", e);
-            }
-        }, 0, POSITION_UPDATE_INTERVAL_SECONDS, TimeUnit.SECONDS);
-    }
-
     /**
      * JavaFX version: Market data thread with callback notification
      */
@@ -241,17 +157,22 @@ public class Processor {
     }
 
     /**
-     * JavaFX version: Load wallets without JTextArea dependency
+     * Load wallets and complete token list from DB. Fetch wallet content asynchronously using CompletableFutures
      */
     private void loadWalletsAndTokensFromDbJavaFX() {
+        long startTime = System.nanoTime();
         DatabaseConnUtil.loadTokensFromDb(m_dbConnection, m_tokenMap);
-
         Set<Pair<String, String>> walletAddresses = DatabaseConnUtil.loadWalletsFromDb(m_dbConnection);
 
         m_walletsLoadFuture = CompletableFuture.runAsync(() -> {
             for (Pair<String, String> walletAddress : walletAddresses) {
                 try {
                     m_walletService.processWalletForJavaFX(walletAddress);
+                    // Notify UI that this wallet has been loaded
+                    Wallet wallet = m_wallets.get(walletAddress.getRight());
+                    if (wallet != null && m_onWalletLoaded != null) {
+                        m_onWalletLoaded.accept(wallet);
+                    }
                 } catch (Exception e) {
                     logger.log(Level.SEVERE, "Exception while processing stored wallet: " + walletAddress, e);
                 }
@@ -276,38 +197,10 @@ public class Processor {
                 }
             }
         });
-    }
 
-    private void loadWalletsAndTokensFromDb(JTextArea outputArea) {
-        DatabaseConnUtil.loadTokensFromDb(m_dbConnection, m_tokenMap);
-
-        // Fetch list of wallet names
-        Set<Pair<String,String>> walletAddresses = DatabaseConnUtil.loadWalletsFromDb(m_dbConnection);
-
-        // Run sequential wallet processing on a dedicated single-thread executor to respect rate limits
-        m_walletsLoadFuture = CompletableFuture.runAsync(() -> {
-            for (Pair<String,String> walletAddress : walletAddresses) {
-                try {
-                    m_walletService.processWalletForCmd(outputArea, walletAddress);
-                } catch (Exception e) {
-                    logger.log(Level.SEVERE, "Exception while processing stored wallet: " + walletAddress, e);
-                }
-
-                try {
-                    logger.log(Level.INFO, "Sleeping for " + WALLET_API_RATE_LIMIT_SECONDS + "s due to sava API rate limits...");
-                    Thread.sleep(WALLET_API_RATE_LIMIT_SECONDS * 1000L);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    logger.log(Level.WARNING, "Wallet loading thread interrupted while sleeping", e);
-                }
-            }
-        }, m_walletLoaderExecutor).whenComplete((v, ex) -> {
-            if (ex != null && !(ex instanceof CancellationException)) {
-                logger.log(Level.SEVERE, "Error while loading wallets ", ex);
-            } else {
-                logger.log(Level.INFO, "Finished loading wallets");
-            }
-        });
+        long endTime = System.nanoTime();
+        double duration = (double) (endTime - startTime) / 1000000000; // Duration in seconds
+        logger.log(Level.INFO,String.format( "Startup Wallet & Token load (from DB & Sava RPC APIs took %f seconds", duration));
     }
 
     public void stop() {
@@ -352,14 +245,4 @@ public class Processor {
             logger.log(Level.SEVERE, "Failed to close DB connection", e);
         }
     }
-
-    // Ensure UI appends occur on the Swing EDT
-    private void appendToOutput(JTextArea outputArea, String message) {
-        if (SwingUtilities.isEventDispatchThread()) {
-            outputArea.append(message);
-        } else {
-            SwingUtilities.invokeLater(() -> outputArea.append(message));
-        }
-    }
-
 }
